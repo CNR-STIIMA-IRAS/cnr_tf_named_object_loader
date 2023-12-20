@@ -1,0 +1,127 @@
+#ifndef AWARE_DEXTER_ROS_INTERFACE__SCENE_OBJECTS_MANAGER__H
+#define AWARE_DEXTER_ROS_INTERFACE__SCENE_OBJECTS_MANAGER__H
+
+#include <future>
+#include <memory>
+#include <thread>
+
+#include <Eigen/Core>
+#include "geometry_msgs/PoseStamped.h"
+#include <Eigen/src/Core/Matrix.h>
+
+#include <moveit_msgs/CollisionObject.h>
+#include <std_msgs/ColorRGBA.h>
+#include <geometry_msgs/Pose.h>
+
+#include <moveit/planning_scene_interface/planning_scene_interface.h>
+
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/transform_broadcaster.h>
+
+struct object_t : std::tuple<std::string, std::string, std::string, geometry_msgs::Pose>
+{
+private: 
+  Eigen::Vector3d scale_;
+public:
+  const std::string& id() const;
+  std::string& id();
+
+  const std::string& path_to_mesh() const;
+  std::string& path_to_mesh();
+
+  const std::string& reference_frame() const;
+  std::string& reference_frame();
+
+  const geometry_msgs::Pose& pose() const;
+  geometry_msgs::Pose& pose();
+
+  const Eigen::Vector3d& scale() const;
+  Eigen::Vector3d& scale();
+};
+
+struct tf_named_object_t : object_t
+{
+private:
+  std::string tf_name_;
+public:
+  const std::string& tf_name() const;
+  std::string& tf_name();
+};
+
+using objects_t = std::vector<object_t>;
+using tf_named_objects_t = std::vector<tf_named_object_t>;
+
+std::vector<std::string> get_id(const objects_t& vv);
+std::vector<std::string> get_id(const tf_named_objects_t& vv);
+std::vector<std::string> get_frame_id(const tf_named_objects_t& vv);
+
+class TFNamedObjectsManager
+{
+public:
+  explicit TFNamedObjectsManager();
+  ~TFNamedObjectsManager() = default;
+
+  TFNamedObjectsManager(const TFNamedObjectsManager&) = delete;
+  TFNamedObjectsManager(TFNamedObjectsManager&&) = delete;
+
+  bool addObjects(const objects_t& objs, double timeout_s, std::string& what);
+  bool addNamedTFObjects(const tf_named_objects_t& objs, double timeout_s, std::string& what);
+  
+  bool removeObjects(const std::vector<std::string>& ids, const double timeout_s, std::string& what);
+  bool removeNamedObjects(const std::vector<std::string>& ids, const double timeout_s, std::string& what);
+  bool resetScene(const double timeout_s, std::string& what);
+
+  bool are_tf_available(const std::vector<std::string>& tf_names, const double& timeout_s, std::string& what);
+
+protected:
+  enum class ObjectState
+  {
+    KNOWN,
+    UNKNOWN,
+    ATTACHED,
+    DETACHED
+  };
+
+  moveit::planning_interface::PlanningSceneInterface planning_scene_interface_;
+
+  class TFPublisherThread
+  {
+    const std::string tf_obj_frame_;
+    const std::string tf_reference_frame_;
+    const geometry_msgs::Pose pose_;
+    std::promise<void> exit_signal_;    
+    std::future<void> future_obj_;
+    std::thread thread_;
+
+    void thread_function( );
+
+    public:
+      using Ptr = std::shared_ptr<TFPublisherThread>;
+      TFPublisherThread() = delete;
+      TFPublisherThread(const TFPublisherThread& ) = delete;
+      TFPublisherThread(TFPublisherThread&& ) = delete;
+      ~TFPublisherThread() = default;
+      explicit TFPublisherThread(const std::string& tf_obj_frame, const std::string& tf_reference_frame, const geometry_msgs::Pose& pose);
+      bool exit();
+      const std::string& tf_object_name() const;
+      const std::string& tf_reference_name() const;
+      const geometry_msgs::Pose& pose() const;
+  };
+
+  std::vector<TFPublisherThread::Ptr> tf_publishers_;
+
+  tf2_ros::Buffer tfBuffer_;
+  tf2_ros::TransformListener tfListener_;
+  
+  bool applyAndCheck(const std::vector<moveit_msgs::CollisionObject>& cov,
+                     const std::vector<std_msgs::ColorRGBA>& colors, const double& timeout_s, std::string& what);
+
+  moveit_msgs::CollisionObject toCollisionObject(const std::string& collisionObjID, const std::string& path_to_mesh,
+                                                 const std::string& reference_frame, const geometry_msgs::Pose& pose,
+                                                 const Eigen::Vector3d scale = Eigen::Vector3d(1, 1, 1));
+
+  bool waitUntil(const std::vector<std::string>& object_names, const std::vector<ObjectState>& checks, double timeout,
+                 std::string& what);
+};
+
+#endif  // AWARE_DEXTER_ROS_INTERFACE__SCENE_OBJECTS_MANAGER__H
