@@ -18,6 +18,9 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/transform_broadcaster.h>
 
+namespace moveit_object_loader 
+{ 
+
 struct object_t : std::tuple<std::string, std::string, std::string, geometry_msgs::Pose>
 {
 private: 
@@ -44,9 +47,14 @@ struct tf_named_object_t : object_t
 private:
   std::string tf_name_;
 public:
+  tf_named_object_t() = default;
+  tf_named_object_t(const object_t& obj);
   const std::string& tf_name() const;
   std::string& tf_name();
+  tf_named_object_t& operator=(const object_t& obj);
 };
+
+
 
 using objects_t = std::vector<object_t>;
 using tf_named_objects_t = std::vector<tf_named_object_t>;
@@ -54,6 +62,8 @@ using tf_named_objects_t = std::vector<tf_named_object_t>;
 std::vector<std::string> get_id(const objects_t& vv);
 std::vector<std::string> get_id(const tf_named_objects_t& vv);
 std::vector<std::string> get_frame_id(const tf_named_objects_t& vv);
+std::vector<std::string> get_reference_frame_id(const tf_named_objects_t& vv);
+std::vector<std::string> get_reference_frame_id(const objects_t& vv);
 
 class TFNamedObjectsManager
 {
@@ -72,6 +82,7 @@ public:
   bool resetScene(const double timeout_s, std::string& what);
 
   bool are_tf_available(const std::vector<std::string>& tf_names, const double& timeout_s, std::string& what);
+  bool are_tf_unavailable(const std::vector<std::string>& tf_names, const double& timeout_s, std::string& what);
 
 protected:
   enum class ObjectState
@@ -111,17 +122,21 @@ protected:
   std::vector<TFPublisherThread::Ptr> tf_publishers_;
 
   tf2_ros::Buffer tfBuffer_;
-  tf2_ros::TransformListener tfListener_;
+  std::shared_ptr<tf2_ros::TransformListener> tfListener_;
   
   bool applyAndCheck(const std::vector<moveit_msgs::CollisionObject>& cov,
                      const std::vector<std_msgs::ColorRGBA>& colors, const double& timeout_s, std::string& what);
-
-  moveit_msgs::CollisionObject toCollisionObject(const std::string& collisionObjID, const std::string& path_to_mesh,
-                                                 const std::string& reference_frame, const geometry_msgs::Pose& pose,
-                                                 const Eigen::Vector3d scale = Eigen::Vector3d(1, 1, 1));
 
   bool waitUntil(const std::vector<std::string>& object_names, const std::vector<ObjectState>& checks, double timeout,
                  std::string& what);
 };
 
+  moveit_msgs::CollisionObject toCollisionObject(const std::string& collisionObjID, const std::string& path_to_mesh,
+                                                 const std::string& reference_frame, const geometry_msgs::Pose& pose,
+                                                 const Eigen::Vector3d scale = Eigen::Vector3d(1, 1, 1));
+
+  moveit_msgs::CollisionObject toCollisionObject(const object_t& obj);
+  object_t toCollisionObject(const moveit_msgs::CollisionObject& obj);
+  
+}
 #endif  // AWARE_DEXTER_ROS_INTERFACE__SCENE_OBJECTS_MANAGER__H

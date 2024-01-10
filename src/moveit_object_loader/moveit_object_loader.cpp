@@ -1,24 +1,35 @@
+#include <chrono>
+#include <cstdio>
+#include <thread>
+#include "ros/duration.h"
+
+#include <yaml-cpp/node/parse.h>
+#include <yaml-cpp/yaml.h>
+
+#include <tf2/buffer_core.h>
+
+#include <ros/init.h>
+#include <ros/time.h>
+
 #include <moveit_msgs/CollisionObject.h>
 #include <moveit_msgs/ApplyPlanningScene.h>
 #include <geometry_msgs/TransformStamped.h>
 
 #include <shape_msgs/Mesh.h>
 #include <geometric_shapes/shape_operations.h>
-#include <moveit_object_loader/moveit_object_loader.h>
 
-#include <chrono>
-#include <cstdio>
-#include <thread>
-#include "geometry_msgs/Pose.h"
-#include "geometry_msgs/PoseStamped.h"
-#include "ros/init.h"
-#include "ros/time.h"
+#include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <std_msgs/ColorRGBA.h>
+
+#include <moveit_object_loader/moveit_object_loader.h>
 
 using namespace std::chrono;
 using namespace std::chrono_literals;
 
-TFNamedObjectsManager::TFNamedObjectsManager() : tfListener_(tfBuffer_){ /* nothing to do so far */ };
+namespace moveit_object_loader
+{
+TFNamedObjectsManager::TFNamedObjectsManager() { /* nothing to do so far */ };
 
 std::string to_string(const objects_t& vv)
 {
@@ -67,41 +78,65 @@ std::vector<std::string> get_frame_id(const tf_named_objects_t& vv)
     ret.push_back(v.tf_name());
   return ret;
 }
+std::vector<std::string> get_reference_frame_id(const tf_named_objects_t& vv)
+{
+  std::vector<std::string> ret;
+  for (const auto& v : vv)
+    ret.push_back(v.reference_frame());
+  return ret;
+}
+
+std::vector<std::string> get_reference_frame_id(const objects_t& vv)
+{
+  std::vector<std::string> ret;
+  for (const auto& v : vv)
+    ret.push_back(v.reference_frame());
+  return ret;
+}
 
 bool TFNamedObjectsManager::waitUntil(const std::vector<std::string>& object_names,
-                                    const std::vector<TFNamedObjectsManager::ObjectState>& checks, double timeout,
-                                    std::string& what)
+                                      const std::vector<TFNamedObjectsManager::ObjectState>& checks, double timeout,
+                                      std::string& what)
 {
   auto start_time = high_resolution_clock::now();
 
+  std::vector<bool> oks(object_names.size(),false);
   while (duration_cast<seconds>(high_resolution_clock::now() - start_time).count() < timeout)
   {
-    bool ok = true;
-    for (const auto& check : checks)
+    for(const auto & check : checks)
     {
       if (check == ObjectState::ATTACHED or check == ObjectState::DETACHED)
       {
         auto const cobjs = planning_scene_interface_.getObjects(object_names);
-        bool attached = true;
-        for (const auto& object_name : object_names)
+        for (size_t i=0;i<object_names.size();i++)
         {
-          attached &= (cobjs.find(object_name) != cobjs.end());
+          const auto& object_name = object_names.at(i);
+          if(oks.at(i))
+          {
+            continue;
+          }
+          bool attached = (cobjs.find(object_name) != cobjs.end());
+          oks.at(i) = ((check == ObjectState::ATTACHED && attached) || (check == ObjectState::DETACHED && !attached));
         }
-        ok &= ((check == ObjectState::ATTACHED && attached) || (check == ObjectState::DETACHED && !attached));
       }
       else if (check == ObjectState::KNOWN or check == ObjectState::UNKNOWN)
       {
         auto const obj_names = planning_scene_interface_.getKnownObjectNames();
-        bool known = true;
-        for (const auto& object_name : object_names)
+        for (size_t i=0;i<object_names.size();i++)
         {
-          known &= (std::find(obj_names.begin(), obj_names.end(), object_name) != obj_names.begin());
+          const auto& object_name = object_names.at(i);
+          if(oks.at(i))
+          {
+            continue;
+          }
+          bool known = (std::find(obj_names.begin(), obj_names.end(), object_name) != obj_names.begin());
+          oks.at(i) = ((check == ObjectState::KNOWN && known) || (check == ObjectState::UNKNOWN && !known));
         }
-        ok &= ((check == ObjectState::KNOWN && known) || (check == ObjectState::UNKNOWN && !known));
       }
     }
 
-    if (ok)
+    std::cout << "------------- OK: " << std::all_of(oks.begin(), oks.end(), [](bool v) { return v; }) << std::endl;
+    if (std::all_of(oks.begin(), oks.end(), [](bool v) { return v; }))
     {
       return true;
     }
@@ -115,8 +150,8 @@ bool TFNamedObjectsManager::waitUntil(const std::vector<std::string>& object_nam
 }
 
 bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::CollisionObject>& cov,
-                                        const std::vector<std_msgs::ColorRGBA>& colors, const double& timeout_s,
-                                        std::string& what)
+                                          const std::vector<std_msgs::ColorRGBA>& colors, const double& timeout_s,
+                                          std::string& what)
 {
   std::vector<std::string> object_names;
   bool cumulative_check = true;
@@ -140,9 +175,9 @@ bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::Collisi
     std::vector<TFNamedObjectsManager::ObjectState> st =
         operations.at(i) != moveit_msgs::CollisionObject::REMOVE ?
             std::vector<TFNamedObjectsManager::ObjectState>{ TFNamedObjectsManager::ObjectState::KNOWN,
-                                                           TFNamedObjectsManager::ObjectState::ATTACHED } :
+                                                             TFNamedObjectsManager::ObjectState::ATTACHED } :
             std::vector<TFNamedObjectsManager::ObjectState>{ TFNamedObjectsManager::ObjectState::UNKNOWN,
-                                                           TFNamedObjectsManager::ObjectState::DETACHED };
+                                                             TFNamedObjectsManager::ObjectState::DETACHED };
 
     std::vector<std::string> _object_names =
         cumulative_check ? object_names : std::vector<std::string>{ object_names.at(i) };
@@ -160,15 +195,13 @@ bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::Collisi
   return ret;
 }
 
-moveit_msgs::CollisionObject TFNamedObjectsManager::toCollisionObject(const std::string& collisionObjID,
-                                                                    const std::string& path_to_mesh,
-                                                                    const std::string& reference_frame,
-                                                                    const geometry_msgs::Pose& pose,
-                                                                    const Eigen::Vector3d scale)
+moveit_msgs::CollisionObject toCollisionObject(const std::string& collisionObjID, const std::string& path_to_mesh,
+                                               const std::string& reference_frame, const geometry_msgs::Pose& pose,
+                                               const Eigen::Vector3d scale)
 {
-  std::shared_ptr<moveit_msgs::CollisionObject> collision_object(new moveit_msgs::CollisionObject());
+  moveit_msgs::CollisionObject collision_object;
 
-  collision_object->id = collisionObjID;
+  collision_object.id = collisionObjID;
 
   shapes::Mesh* m = shapes::createMeshFromResource(path_to_mesh, scale);
   shapes::ShapeMsg mesh_msg;
@@ -178,43 +211,68 @@ moveit_msgs::CollisionObject TFNamedObjectsManager::toCollisionObject(const std:
   shape_msgs::Mesh mesh;
   mesh = boost::get<shape_msgs::Mesh>(mesh_msg);
 
-  collision_object->meshes.resize(1);
-  collision_object->mesh_poses.resize(1);
-  collision_object->meshes[0] = mesh;
-  collision_object->header.frame_id = reference_frame;
+  collision_object.meshes.resize(1);
+  collision_object.mesh_poses.resize(1);
+  collision_object.meshes[0] = mesh;
+  collision_object.header.frame_id = reference_frame;
 
-  collision_object->mesh_poses[0] = pose;
+  collision_object.mesh_poses[0] = pose;
 
-  collision_object->meshes.push_back(mesh);
-  collision_object->mesh_poses.push_back(collision_object->mesh_poses[0]);
-  collision_object->operation = collision_object->ADD;
+  collision_object.meshes.push_back(mesh);
+  collision_object.mesh_poses.push_back(collision_object.mesh_poses[0]);
+  collision_object.operation = collision_object.ADD;
 
-  return *collision_object;
+  return collision_object;
+}
+
+object_t toCollisionObject(const moveit_msgs::CollisionObject& obj)
+{
+  object_t ret;
+  ret.id() = obj.id;
+  ret.pose() = obj.pose;
+  ret.reference_frame() = obj.header.frame_id;
+  
+  YAML::Node config = YAML::Load(obj.type.db);
+  ret.path_to_mesh() = config["path_to_mesh"].as<std::string>();
+  
+  if(config["scale"])
+  {
+    if(config["scale"]["x"] && config["scale"]["y"] && config["scale"]["z"] )
+    {
+      if(config["scale"]["x"].IsScalar() && config["scale"]["y"].IsScalar() && config["scale"]["z"].IsScalar() )
+      ret.scale() << config["scale"]["x"].as<double>() , config["scale"]["y"].as<double>() , config["scale"]["z"].as<double>();
+    }
+  }
+  else 
+  {
+    ret.scale() = Eigen::Vector3d::Ones();
+  }
+  return ret;
+}
+
+moveit_msgs::CollisionObject toCollisionObject(const object_t& obj)
+{
+  return toCollisionObject(obj.id(),obj.path_to_mesh(), obj.reference_frame(), obj.pose(), obj.scale());
 }
 
 bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, std::string& what)
 {
-  objects_t _objs;
-  auto start_time = high_resolution_clock::now();
-  while (_objs.size() == objs.size())
+  if(!tfListener_)
   {
-    geometry_msgs::TransformStamped ts;
-    try
-    {
-      ts = tfBuffer_.lookupTransform("world", objs.at(_objs.size()).reference_frame(), ros::Time(0));
-    }
-    catch (tf2::TransformException& ex)
-    {
-      continue;
-    }
-    _objs.push_back(objs.at(_objs.size()));
-    if (duration_cast<seconds>(high_resolution_clock::now() - start_time).count() > timeout_s)
-    {
-      what = "Timeout Expired. Some of the objects " + to_string(objs) +
-             " refer to frames that are not in the list of the tf  (lookup timeout: " + std::to_string(timeout_s) +
-             "sec)";
-      return false;
-    }
+    tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
+    ros::Duration(tfBuffer_.getCacheLength()).sleep();
+  }
+
+  auto start_time = high_resolution_clock::now();
+  ROS_INFO("[Add Object] Add %zu objects", objs.size());
+  ROS_INFO("[Add Object] Check if TF reference frame is published");
+  auto reference_frames = get_reference_frame_id(objs);
+  if(!are_tf_available(reference_frames,timeout_s, what))
+  {
+    what = "Timeout Expired. Some of the objects " + to_string(objs) +
+        " refer to frames that are not in the list of the tf  (lookup timeout: " + std::to_string(timeout_s) +
+        "sec): " + what;
+    return false;
   }
   double _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
 
@@ -222,6 +280,7 @@ bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, 
   std::vector<std_msgs::ColorRGBA> colors;
   std::vector<std::string> v = planning_scene_interface_.getKnownObjectNames();
 
+  ROS_INFO("[Add Object] Fill Collision Object msg");
   for (size_t i = 0; i < objs.size(); i++)
   {
     cobjs.push_back(toCollisionObject(objs.at(i).id(), objs.at(i).path_to_mesh(), objs.at(i).reference_frame(),
@@ -234,55 +293,100 @@ bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, 
     color.a = 1;
     colors.push_back(color);
   }
+  ROS_INFO("[Add Object] Apply and Check");
   return applyAndCheck(cobjs, colors, _timeout_s, what);
 }
 
 bool TFNamedObjectsManager::are_tf_available(const std::vector<std::string>& tf_names, const double& timeout_s,
-                                           std::string& what)
+                                             std::string& what)
 {
-  auto start_time = high_resolution_clock::now();
-  std::vector<std::string> ok;
-  while (ok.size() < tf_names.size())
+  if(!tfListener_)
   {
-    geometry_msgs::TransformStamped ts;
-    try
-    {
-      ts = tfBuffer_.lookupTransform("world", tf_names.at(ok.size()), ros::Time(0));
-    }
-    catch (tf2::TransformException& ex)
-    {
-      continue;
-    }
-    ok.push_back(tf_names.at(ok.size()));
+    tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
+    ros::Duration(tfBuffer_.getCacheLength()).sleep();
+  }
+  
+  auto start_time = high_resolution_clock::now();
+  
+  std::vector<std::string> _tf_names;    
+  while (_tf_names.size())
+  {
     if (duration_cast<seconds>(high_resolution_clock::now() - start_time).count() > timeout_s)
     {
-      what = "Timeout Expired. Asked for " + to_string(tf_names) + ", but only " + to_string(ok) +
-             " are publishedafter " + std::to_string(timeout_s) + "sec";
+      what = "Timeout Expired. Asked for " + to_string(tf_names) + ", but only " + std::to_string(int(tf_names.size()-_tf_names.size())) +
+             " are published after " + std::to_string(timeout_s) + "sec";
       return false;
+    }
+    std::vector< std::string > ids;
+    tfBuffer_._getFrameStrings(ids);
+
+    if( std::find(ids.begin(), ids.end(), _tf_names.back()) != ids.end() )
+    {
+      _tf_names.pop_back();
+    }
+  }
+  return true;
+}
+
+bool TFNamedObjectsManager::are_tf_unavailable(const std::vector<std::string>& tf_names, const double& timeout_s,
+                                             std::string& what)
+{
+  if(!tfListener_)
+  {
+    tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
+    ros::Duration(tfBuffer_.getCacheLength()).sleep();
+  }
+  
+  auto start_time = high_resolution_clock::now();
+  
+  std::vector<std::string> _tf_names;    
+  while (_tf_names.size())
+  {
+    if (duration_cast<seconds>(high_resolution_clock::now() - start_time).count() > timeout_s)
+    {
+      what = "Timeout Expired. Asked for " + to_string(tf_names) + ", but only " + std::to_string(int(tf_names.size()-_tf_names.size())) +
+             " are published after " + std::to_string(timeout_s) + "sec";
+      return false;
+    }
+    std::vector< std::string > ids;
+    tfBuffer_._getFrameStrings(ids);
+
+    if( std::find(ids.begin(), ids.end(), _tf_names.back()) == ids.end() )
+    {
+      _tf_names.pop_back();
     }
   }
   return true;
 }
 
 /**
- * @brief 
- * 
- * @param tf_named_objects 
- * @param timeout_s 
- * @param what 
- * @return true 
- * @return false 
+ * @brief
+ *
+ * @param tf_named_objects
+ * @param timeout_s
+ * @param what
+ * @return true
+ * @return false
  */
 bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named_objects, double timeout_s,
-                                            std::string& what)
+                                              std::string& what)
 {
+  if(!tfListener_)
+  {
+    tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
+    ros::Duration(tfBuffer_.getCacheLength()).sleep();
+  }
+
+  ROS_INFO("[Add Named Object] Add %zu objects", tf_named_objects.size());
+  double _timeout_s = timeout_s;
   auto start_time = high_resolution_clock::now();
 
   // =====================================
   // CHECK IF THE TF PARENTS DO EXIST
   // =====================================
+  ROS_INFO("[Add Named Object] Check if The reference frame are in the list of TF published (timeout: %f)", timeout_s);
   auto now = high_resolution_clock::now();
-  if (!are_tf_available(get_frame_id(tf_named_objects), timeout_s, what))
+  if (!are_tf_available(get_reference_frame_id(tf_named_objects), timeout_s, what))
   {
     return false;
   }
@@ -290,7 +394,9 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
   // =====================================
   // REMOVE ALREADY PRESENT OBJECTS
   // =====================================
-  if (!removeObjects(get_id(tf_named_objects), timeout_s - (high_resolution_clock::now() - start_time).count(), what))
+  _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
+  ROS_INFO("[Add Named Object] Remove objects if present (timeout: %f)", _timeout_s);
+  if (!removeObjects(get_id(tf_named_objects), _timeout_s, what))
   {
     return false;
   }
@@ -298,12 +404,15 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
   // =====================================
   // == REMOVE ALREADY EXISTING TF PUBLISHER OF THE OBJ TF FRAME
   // =====================================
+  _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
+  ROS_INFO("[Add Named Object] Remove TF publisher present (timeout: %f)", _timeout_s);
   objects_t objs;
   for (const auto& obj : tf_named_objects)
   {
     // Check If the TF OBJ is published by this library
-    auto it = std::find_if(tf_publishers_.begin(), tf_publishers_.end(),
-                           [&obj](const TFPublisherThread::Ptr& tf_pub) { return tf_pub->tf_object_name() == obj.tf_name(); });
+    auto it = std::find_if(tf_publishers_.begin(), tf_publishers_.end(), [&obj](const TFPublisherThread::Ptr& tf_pub) {
+      return tf_pub->tf_object_name() == obj.tf_name();
+    });
     if (it != tf_publishers_.end())
     {
       (*it)->exit();
@@ -311,40 +420,42 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
     }
 
     // Check If there are other TF publisher
-    geometry_msgs::TransformStamped ts;
-    try
+    _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
+    ROS_INFO("[Add Named Object] Check if other TF publisher may overlap our TF (timeout: %f)", _timeout_s);
+    if (!are_tf_unavailable({obj.tf_name()}, timeout_s, what))
     {
-      ts = tfBuffer_.lookupTransform("world", obj.tf_name(), ros::Time(0));
-      what = "A TF publisher already exists for this TF name: " + obj.tf_name() + ". Abort";
       return false;
     }
-    catch (tf2::TransformException& ex)
-    {
-      // OK none TF with the same name exists
-      continue;
-    }
+
     objs.push_back(obj);
   }
   // =====================================
 
   // =====================================
   // ADD OBJECTS
-  if (!addObjects(objs, timeout_s - (high_resolution_clock::now() - start_time).count(), what))
+  ROS_INFO("[Add Named Object] Add Objects (timeout: %f)", timeout_s);
+  _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
+  if (!addObjects(objs, _timeout_s, what))
   {
     return false;
   }
 
   // =====================================
   // ADD TF PUBLISHER
+  ROS_INFO("Add TF Publisher (timeout: %f)", timeout_s);
   for (const auto& tf_named_object : tf_named_objects)
   {
-    TFPublisherThread::Ptr tf_pub(new TFPublisherThread(tf_named_object.tf_name(), tf_named_object.reference_frame(), tf_named_object.pose()));
+    std::cout << tf_named_object.pose() << std::endl;
+    TFPublisherThread::Ptr tf_pub(
+        new TFPublisherThread(tf_named_object.tf_name(), tf_named_object.reference_frame(), tf_named_object.pose()));
     tf_publishers_.push_back(tf_pub);
   }
 
   // =====================================
   // CHECK IF THE OBJ TF  DO EXIST
-  if (!are_tf_available(get_id(tf_named_objects), timeout_s - (high_resolution_clock::now() - start_time).count(),
+  ROS_INFO("Check if TF are alreay published (timeout: %f)", timeout_s);
+  _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
+  if (!are_tf_unavailable(get_id(tf_named_objects), _timeout_s,
                         what))
   {
     return false;
@@ -353,7 +464,8 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
   return true;
 }
 
-bool TFNamedObjectsManager::removeObjects(const std::vector<std::string>& ids, const double timeout_s, std::string& what)
+bool TFNamedObjectsManager::removeObjects(const std::vector<std::string>& ids, const double timeout_s,
+                                          std::string& what)
 {
   std::vector<std::string> vv = planning_scene_interface_.getKnownObjectNames();
   std::vector<std::string> _ids;
@@ -370,34 +482,33 @@ bool TFNamedObjectsManager::removeObjects(const std::vector<std::string>& ids, c
                    timeout_s, what);
 }
 
-
-bool TFNamedObjectsManager::removeNamedObjects(const std::vector<std::string>& ids, const double timeout_s, std::string& what)
+bool TFNamedObjectsManager::removeNamedObjects(const std::vector<std::string>& ids, const double timeout_s,
+                                               std::string& what)
 {
-  if(!removeObjects(ids, timeout_s, what))
+  if (!removeObjects(ids, timeout_s, what))
   {
     return false;
-
   }
   std::vector<std::string> vv;
-  for(const auto & p  : tf_publishers_)
+  for (const auto& p : tf_publishers_)
   {
     vv.push_back(p->tf_object_name());
   }
 
-  for(auto & tf_publisher : tf_publishers_)
+  for (auto& tf_publisher : tf_publishers_)
   {
     tf_publisher->exit();
   }
   tf_publishers_.clear();
 
-  if(are_tf_available(vv, timeout_s, what))
+  if (are_tf_available(vv, timeout_s, what))
   {
-    what = "Timeout Expired. The TF " + to_string(vv) + " are still the scene after " + std::to_string(timeout_s) + "sec.";
+    what =
+        "Timeout Expired. The TF " + to_string(vv) + " are still the scene after " + std::to_string(timeout_s) + "sec.";
     return false;
   }
   return true;
 }
-
 
 bool TFNamedObjectsManager::resetScene(const double timeout_s, std::string& what)
 {
@@ -449,15 +560,35 @@ Eigen::Vector3d& object_t::scale()
   return scale_;
 }
 
+tf_named_object_t::tf_named_object_t(const object_t& obj)
+{
+  *this = obj;
+}
+
 const std::string& tf_named_object_t::tf_name() const
 {
   return tf_name_;
 }
+
 std::string& tf_named_object_t::tf_name()
 {
   return tf_name_;
 }
-TFNamedObjectsManager::TFPublisherThread::TFPublisherThread(const std::string& tf_obj_frame, const std::string& tf_reference_frame, const geometry_msgs::Pose& pose)
+
+tf_named_object_t& tf_named_object_t::operator=(const object_t& obj)
+{
+  this->id() = obj.id();
+  this->path_to_mesh() = obj.path_to_mesh();
+  this->pose() = obj.pose();
+  this->reference_frame() = obj.reference_frame();
+  this->scale() = obj.scale();
+  this->tf_name() = obj.id();
+  return *this;
+}
+
+TFNamedObjectsManager::TFPublisherThread::TFPublisherThread(const std::string& tf_obj_frame,
+                                                            const std::string& tf_reference_frame,
+                                                            const geometry_msgs::Pose& pose)
   : tf_obj_frame_(tf_obj_frame)
   , tf_reference_frame_(tf_reference_frame)
   , pose_(pose)
@@ -503,10 +634,12 @@ void TFNamedObjectsManager::TFPublisherThread::thread_function()
     tfs.transform.translation.y = pose_.position.y;
     tfs.transform.translation.z = pose_.position.z;
     tfs.transform.rotation.x = pose_.orientation.x;
-    tfs.transform.rotation.y = pose_.orientation.x;
+    tfs.transform.rotation.y = pose_.orientation.y;
     tfs.transform.rotation.z = pose_.orientation.z;
-    tfs.transform.rotation.w = pose_.orientation.x;
+    tfs.transform.rotation.w = pose_.orientation.w;
     tf_broadcaster.sendTransform(tfs);
     ros::spinOnce();
   }
 }
+
+}  // namespace moveit_object_loader

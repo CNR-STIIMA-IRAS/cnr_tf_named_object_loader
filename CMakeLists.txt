@@ -8,6 +8,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED On)
 set(CMAKE_CXX_EXTENSIONS Off)
 
 ### 
+find_package(yaml-cpp REQUIRED)
+find_package(Eigen3 REQUIRED COMPONENTS Core)
+### 
 find_package(catkin REQUIRED COMPONENTS
   moveit_msgs
   moveit_ros_planning_interface
@@ -21,15 +24,16 @@ catkin_package(
   INCLUDE_DIRS include
   LIBRARIES moveit_object_loader
   CATKIN_DEPENDS moveit_msgs moveit_ros_planning_interface
-#  DEPENDS system_lib
+  DEPENDS Eigen3
 )
 
 ###########
 ## Build ##
 ###########
 include_directories(
- include
+  include
   ${catkin_INCLUDE_DIRS}
+  ${YAML_CPP_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -38,16 +42,18 @@ add_library(${PROJECT_NAME}
 )
 add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME}
-   ${catkin_LIBRARIES}
+  ${catkin_LIBRARIES}
+  ${YAML_CPP_LIBRARIES}
+  Eigen3::Eigen
 )
-# add_executable(${PROJECT_NAME}_node src/moveit_object_loader_node.cpp)
-# set_target_properties(${PROJECT_NAME}_node PROPERTIES OUTPUT_NAME node PREFIX "")
-# add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+add_executable(${PROJECT_NAME}_node src/moveit_object_loader_node.cpp)
+add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(${PROJECT_NAME}_node
-#    ${catkin_LIBRARIES}
-# )
+target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}
+    ${catkin_LIBRARIES}
+)
 
 #############
 ## Install ##
@@ -55,9 +61,9 @@ target_link_libraries(${PROJECT_NAME}
 
 ## Mark executables for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
-# install(TARGETS ${PROJECT_NAME}_node
-#   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-# )
+install(TARGETS ${PROJECT_NAME}_node
+   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
 # Mark libraries for installation
 # See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_libraries.html
