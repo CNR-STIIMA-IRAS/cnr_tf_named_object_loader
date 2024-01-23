@@ -1,3 +1,4 @@
+#include <boost/iostreams/detail/select.hpp>
 #include <chrono>
 #include <cstdio>
 #include <thread>
@@ -29,7 +30,8 @@ using namespace std::chrono_literals;
 
 namespace moveit_object_loader
 {
-TFNamedObjectsManager::TFNamedObjectsManager() { /* nothing to do so far */ };
+TFNamedObjectsManager::TFNamedObjectsManager() // : tfBuffer_(ros::Duration(2.0))
+{ /* nothing to do so far */ };
 
 std::string to_string(const objects_t& vv)
 {
@@ -100,18 +102,18 @@ bool TFNamedObjectsManager::waitUntil(const std::vector<std::string>& object_nam
 {
   auto start_time = high_resolution_clock::now();
 
-  std::vector<bool> oks(object_names.size(),false);
+  std::vector<bool> oks(object_names.size(), false);
   while (duration_cast<seconds>(high_resolution_clock::now() - start_time).count() < timeout)
   {
-    for(const auto & check : checks)
+    for (const auto& check : checks)
     {
       if (check == ObjectState::ATTACHED or check == ObjectState::DETACHED)
       {
         auto const cobjs = planning_scene_interface_.getObjects(object_names);
-        for (size_t i=0;i<object_names.size();i++)
+        for (size_t i = 0; i < object_names.size(); i++)
         {
           const auto& object_name = object_names.at(i);
-          if(oks.at(i))
+          if (oks.at(i))
           {
             continue;
           }
@@ -122,10 +124,10 @@ bool TFNamedObjectsManager::waitUntil(const std::vector<std::string>& object_nam
       else if (check == ObjectState::KNOWN or check == ObjectState::UNKNOWN)
       {
         auto const obj_names = planning_scene_interface_.getKnownObjectNames();
-        for (size_t i=0;i<object_names.size();i++)
+        for (size_t i = 0; i < object_names.size(); i++)
         {
           const auto& object_name = object_names.at(i);
-          if(oks.at(i))
+          if (oks.at(i))
           {
             continue;
           }
@@ -135,7 +137,6 @@ bool TFNamedObjectsManager::waitUntil(const std::vector<std::string>& object_nam
       }
     }
 
-    std::cout << "------------- OK: " << std::all_of(oks.begin(), oks.end(), [](bool v) { return v; }) << std::endl;
     if (std::all_of(oks.begin(), oks.end(), [](bool v) { return v; }))
     {
       return true;
@@ -229,35 +230,38 @@ object_t toCollisionObject(const moveit_msgs::CollisionObject& obj)
 {
   object_t ret;
   ret.id() = obj.id;
-  ret.pose() = obj.pose;
   ret.reference_frame() = obj.header.frame_id;
-  
+
   YAML::Node config = YAML::Load(obj.type.db);
-  ret.path_to_mesh() = config["path_to_mesh"].as<std::string>();
-  
-  if(config["scale"])
+  if (config["path_to_mesh"])
   {
-    if(config["scale"]["x"] && config["scale"]["y"] && config["scale"]["z"] )
+    ret.path_to_mesh() = config["path_to_mesh"].as<std::string>();
+    ret.mesh_pose() = obj.mesh_poses.front();
+    if (config["scale"])
     {
-      if(config["scale"]["x"].IsScalar() && config["scale"]["y"].IsScalar() && config["scale"]["z"].IsScalar() )
-      ret.scale() << config["scale"]["x"].as<double>() , config["scale"]["y"].as<double>() , config["scale"]["z"].as<double>();
+      if (config["scale"]["x"] && config["scale"]["y"] && config["scale"]["z"])
+      {
+        if (config["scale"]["x"].IsScalar() && config["scale"]["y"].IsScalar() && config["scale"]["z"].IsScalar())
+          ret.scale() << config["scale"]["x"].as<double>(), config["scale"]["y"].as<double>(),
+              config["scale"]["z"].as<double>();
+      }
     }
-  }
-  else 
-  {
-    ret.scale() = Eigen::Vector3d::Ones();
+    else
+    {
+      ret.scale() = Eigen::Vector3d::Ones();
+    }
   }
   return ret;
 }
 
 moveit_msgs::CollisionObject toCollisionObject(const object_t& obj)
 {
-  return toCollisionObject(obj.id(),obj.path_to_mesh(), obj.reference_frame(), obj.pose(), obj.scale());
+  return toCollisionObject(obj.id(), obj.path_to_mesh(), obj.reference_frame(), obj.mesh_pose(), obj.scale());
 }
 
 bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, std::string& what)
 {
-  if(!tfListener_)
+  if (!tfListener_)
   {
     tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
     ros::Duration(tfBuffer_.getCacheLength()).sleep();
@@ -267,11 +271,11 @@ bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, 
   ROS_INFO("[Add Object] Add %zu objects", objs.size());
   ROS_INFO("[Add Object] Check if TF reference frame is published");
   auto reference_frames = get_reference_frame_id(objs);
-  if(!are_tf_available(reference_frames,timeout_s, what))
+  if (!are_tf_available(reference_frames, timeout_s, what))
   {
     what = "Timeout Expired. Some of the objects " + to_string(objs) +
-        " refer to frames that are not in the list of the tf  (lookup timeout: " + std::to_string(timeout_s) +
-        "sec): " + what;
+           " refer to frames that are not in the list of the tf  (lookup timeout: " + std::to_string(timeout_s) +
+           "sec): " + what;
     return false;
   }
   double _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
@@ -284,7 +288,7 @@ bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, 
   for (size_t i = 0; i < objs.size(); i++)
   {
     cobjs.push_back(toCollisionObject(objs.at(i).id(), objs.at(i).path_to_mesh(), objs.at(i).reference_frame(),
-                                      objs.at(i).pose(), objs.at(i).scale()));
+                                      objs.at(i).mesh_pose(), objs.at(i).scale()));
 
     std_msgs::ColorRGBA color;
     color.r = 255;
@@ -297,67 +301,70 @@ bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, 
   return applyAndCheck(cobjs, colors, _timeout_s, what);
 }
 
+bool TFNamedObjectsManager::check(const std::vector<std::string>& tf_names, const double& timeout_s, bool check_if_available, std::string& what)
+{
+  if (!tfListener_)
+  {
+    tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
+    ros::Duration(tfBuffer_.getCacheLength()).sleep();
+  }
+
+  auto start_time = high_resolution_clock::now();
+
+  std::vector<std::string> _tf_names = tf_names;
+  do
+  {
+    double _now = ros::Time::now().toSec();
+    std::string cached_frames = tfBuffer_.allFramesAsYAML();
+    YAML::Node config = YAML::Load(cached_frames);
+    bool frame_update_available = config[_tf_names.back().c_str()];
+    if(frame_update_available) // check if updated!
+    {
+      std::string parent = config[_tf_names.back().c_str()]["parent"].as<std::string>();
+      frame_update_available = tfBuffer_.canTransform(_tf_names.back(), parent, ros::Time::now());
+    }
+
+    if((frame_update_available && check_if_available) || (!frame_update_available && !check_if_available))
+    {
+      _tf_names.pop_back();
+    }
+
+    if(_tf_names.size()==0)
+    {
+      break;
+    }
+    else
+    {
+      std::vector<std::string> _frames;
+      for(YAML::const_iterator it=config.begin();it!=config.end();++it) 
+      {
+        _frames.push_back(it->first.as<std::string>());
+      }
+      if (duration_cast<seconds>(high_resolution_clock::now() - start_time).count() > timeout_s)
+      {
+        what = "Timeout Expired. Checked the status of the frames: " + to_string(tf_names) + ". The actual available frames are " +
+              to_string(_frames) + " (timeout: " + std::to_string(timeout_s) + "sec)";
+        return false;
+      }
+    }
+  }
+  while (true);
+
+  return true;
+}
+
 bool TFNamedObjectsManager::are_tf_available(const std::vector<std::string>& tf_names, const double& timeout_s,
                                              std::string& what)
 {
-  if(!tfListener_)
-  {
-    tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
-    ros::Duration(tfBuffer_.getCacheLength()).sleep();
-  }
-  
-  auto start_time = high_resolution_clock::now();
-  
-  std::vector<std::string> _tf_names;    
-  while (_tf_names.size())
-  {
-    if (duration_cast<seconds>(high_resolution_clock::now() - start_time).count() > timeout_s)
-    {
-      what = "Timeout Expired. Asked for " + to_string(tf_names) + ", but only " + std::to_string(int(tf_names.size()-_tf_names.size())) +
-             " are published after " + std::to_string(timeout_s) + "sec";
-      return false;
-    }
-    std::vector< std::string > ids;
-    tfBuffer_._getFrameStrings(ids);
-
-    if( std::find(ids.begin(), ids.end(), _tf_names.back()) != ids.end() )
-    {
-      _tf_names.pop_back();
-    }
-  }
-  return true;
+  return check(tf_names, timeout_s, true, what);
 }
 
 bool TFNamedObjectsManager::are_tf_unavailable(const std::vector<std::string>& tf_names, const double& timeout_s,
-                                             std::string& what)
+                                               std::string& what)
 {
-  if(!tfListener_)
-  {
-    tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
-    ros::Duration(tfBuffer_.getCacheLength()).sleep();
-  }
-  
-  auto start_time = high_resolution_clock::now();
-  
-  std::vector<std::string> _tf_names;    
-  while (_tf_names.size())
-  {
-    if (duration_cast<seconds>(high_resolution_clock::now() - start_time).count() > timeout_s)
-    {
-      what = "Timeout Expired. Asked for " + to_string(tf_names) + ", but only " + std::to_string(int(tf_names.size()-_tf_names.size())) +
-             " are published after " + std::to_string(timeout_s) + "sec";
-      return false;
-    }
-    std::vector< std::string > ids;
-    tfBuffer_._getFrameStrings(ids);
-
-    if( std::find(ids.begin(), ids.end(), _tf_names.back()) == ids.end() )
-    {
-      _tf_names.pop_back();
-    }
-  }
-  return true;
+  return check(tf_names, timeout_s, false, what);
 }
+
 
 /**
  * @brief
@@ -371,7 +378,7 @@ bool TFNamedObjectsManager::are_tf_unavailable(const std::vector<std::string>& t
 bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named_objects, double timeout_s,
                                               std::string& what)
 {
-  if(!tfListener_)
+  if (!tfListener_)
   {
     tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
     ros::Duration(tfBuffer_.getCacheLength()).sleep();
@@ -410,11 +417,14 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
   for (const auto& obj : tf_named_objects)
   {
     // Check If the TF OBJ is published by this library
+    ROS_INFO("[Add Named Object] Check if the OBJ is already published by this library");
     auto it = std::find_if(tf_publishers_.begin(), tf_publishers_.end(), [&obj](const TFPublisherThread::Ptr& tf_pub) {
       return tf_pub->tf_object_name() == obj.tf_name();
     });
     if (it != tf_publishers_.end())
     {
+      ROS_INFO("[Add Named Object] The OBJ is already published by this library!");
+      ROS_INFO("[Add Named Object] Exit from the thread..");
       (*it)->exit();
       tf_publishers_.erase(it);
     }
@@ -422,7 +432,7 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
     // Check If there are other TF publisher
     _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
     ROS_INFO("[Add Named Object] Check if other TF publisher may overlap our TF (timeout: %f)", _timeout_s);
-    if (!are_tf_unavailable({obj.tf_name()}, timeout_s, what))
+    if (!are_tf_unavailable({ obj.tf_name() }, timeout_s, what))
     {
       return false;
     }
@@ -445,9 +455,9 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
   ROS_INFO("Add TF Publisher (timeout: %f)", timeout_s);
   for (const auto& tf_named_object : tf_named_objects)
   {
-    std::cout << tf_named_object.pose() << std::endl;
+    std::cout << tf_named_object.mesh_pose() << std::endl;
     TFPublisherThread::Ptr tf_pub(
-        new TFPublisherThread(tf_named_object.tf_name(), tf_named_object.reference_frame(), tf_named_object.pose()));
+        new TFPublisherThread(tf_named_object.tf_name(), tf_named_object.reference_frame(), tf_named_object.mesh_pose()));
     tf_publishers_.push_back(tf_pub);
   }
 
@@ -455,8 +465,7 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
   // CHECK IF THE OBJ TF  DO EXIST
   ROS_INFO("Check if TF are alreay published (timeout: %f)", timeout_s);
   _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
-  if (!are_tf_unavailable(get_id(tf_named_objects), _timeout_s,
-                        what))
+  if (!are_tf_unavailable(get_id(tf_named_objects), _timeout_s, what))
   {
     return false;
   }
@@ -541,11 +550,11 @@ std::string& object_t::reference_frame()
 {
   return std::get<2>(*this);
 }
-const geometry_msgs::Pose& object_t::pose() const
+const geometry_msgs::Pose& object_t::mesh_pose() const
 {
   return std::get<3>(*this);
 }
-geometry_msgs::Pose& object_t::pose()
+geometry_msgs::Pose& object_t::mesh_pose()
 {
   return std::get<3>(*this);
 }
@@ -579,7 +588,7 @@ tf_named_object_t& tf_named_object_t::operator=(const object_t& obj)
 {
   this->id() = obj.id();
   this->path_to_mesh() = obj.path_to_mesh();
-  this->pose() = obj.pose();
+  this->mesh_pose() = obj.mesh_pose();
   this->reference_frame() = obj.reference_frame();
   this->scale() = obj.scale();
   this->tf_name() = obj.id();
@@ -598,9 +607,10 @@ TFNamedObjectsManager::TFPublisherThread::TFPublisherThread(const std::string& t
 }
 bool TFNamedObjectsManager::TFPublisherThread::exit()
 {
-  exit_signal_.set_value();
   if (thread_.joinable())
   {
+    exit_signal_.set_value();
+    ROS_ERROR("..... Waiting for joining the thread that publish the TF '%s'", tf_obj_frame_.c_str());
     thread_.join();
   }
   return true;
@@ -623,7 +633,8 @@ const geometry_msgs::Pose& TFNamedObjectsManager::TFPublisherThread::pose() cons
 
 void TFNamedObjectsManager::TFPublisherThread::thread_function()
 {
-  static tf2_ros::TransformBroadcaster tf_broadcaster;
+  ROS_INFO("Starting to Pulish of '%s'", tf_obj_frame_.c_str());
+  tf2_ros::TransformBroadcaster tf_broadcaster;
   while (future_obj_.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout)
   {
     geometry_msgs::TransformStamped tfs;
@@ -639,7 +650,10 @@ void TFNamedObjectsManager::TFPublisherThread::thread_function()
     tfs.transform.rotation.w = pose_.orientation.w;
     tf_broadcaster.sendTransform(tfs);
     ros::spinOnce();
+    std::this_thread::sleep_for(100ms);
   }
+  ROS_INFO("Exiting from the TF Pulisher of '%s'", tf_obj_frame_.c_str());
+  std::this_thread::sleep_for(500ms);
 }
 
 }  // namespace moveit_object_loader

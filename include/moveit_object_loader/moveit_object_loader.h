@@ -29,14 +29,14 @@ public:
   const std::string& id() const;
   std::string& id();
 
-  const std::string& path_to_mesh() const;
-  std::string& path_to_mesh();
-
   const std::string& reference_frame() const;
   std::string& reference_frame();
 
-  const geometry_msgs::Pose& pose() const;
-  geometry_msgs::Pose& pose();
+  const std::string& path_to_mesh() const;
+  std::string& path_to_mesh();
+
+  const geometry_msgs::Pose& mesh_pose() const;
+  geometry_msgs::Pose& mesh_pose();
 
   const Eigen::Vector3d& scale() const;
   Eigen::Vector3d& scale();
@@ -129,6 +129,8 @@ protected:
 
   bool waitUntil(const std::vector<std::string>& object_names, const std::vector<ObjectState>& checks, double timeout,
                  std::string& what);
+
+  bool check(const std::vector<std::string>& tf_names, const double& timeout_s, bool check_if_available, std::string& what);
 };
 
   moveit_msgs::CollisionObject toCollisionObject(const std::string& collisionObjID, const std::string& path_to_mesh,
