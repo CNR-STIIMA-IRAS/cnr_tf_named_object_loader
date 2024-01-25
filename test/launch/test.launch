@@ -1,13 +1,18 @@
 <launch>
+    <arg name="debug" default="false" />
+    <arg unless="$(arg debug)" name="launch_prefix" value="" />
+    <arg     if="$(arg debug)" name="launch_prefix"
+             value="gdb -x $(dirname)/gdb_settings.gdb --ex run --args" />
+
     <include file="$(find ur10e_moveit_config)/launch/demo.launch" />
 
-    <node name="moveit_object_loader_node" pkg="moveit_object_loader" type="moveit_object_loader_node" output="screen" >
+    <node name="moveit_object_loader_node" pkg="moveit_object_loader" type="moveit_object_loader_node" output="screen" launch-prefix="$(arg launch_prefix)">
         <param name="timeout" value="10.0" />
     </node>
 
     <node pkg="rosservice" type="rosservice" name="global_loc" args="call --wait /load_tf_named_object 
     &quot; 
-    { scene: { world: {collision_objects: [ { header: {frame_id: base}, id: 'blade', mesh_poses: [ {position: {x: 0, y: 0, z: 0}, orientation: {x: 0, y: 0, z: 0, w: 1} }], type: {db: '{ path_to_mesh: file:///home/feynman/aware/docker/docker_compose/volumes/shared/pala_mozzata_nsdr.stl, scale: {x: 0.001, y: 0.001, z: 0.001}}' }, operation: 0, }], }, is_diff: true, }, }
+    { scene: { world: {collision_objects: [ { header: {frame_id: base}, id: 'blade', pose: {position: {x: 0, y: 0, z: 0}, orientation: {x: 0, y: 0, z: 0, w: 1} }, type: {db: '{ path_to_mesh: file:///home/feynman/aware/docker/docker_compose/volumes/shared/pala_mozzata_nsdr.stl, scale: {x: 0.001, y: 0.001, z: 0.001}}' }, operation: 0, }], }, is_diff: true, }, }
     &quot;" 
     />
 

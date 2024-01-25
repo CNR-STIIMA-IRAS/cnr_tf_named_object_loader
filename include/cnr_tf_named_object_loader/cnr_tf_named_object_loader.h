@@ -21,26 +21,28 @@
 namespace moveit_object_loader 
 { 
 
-struct object_t : std::tuple<std::string, std::string, std::string, geometry_msgs::Pose>
-{
-private: 
-  Eigen::Vector3d scale_;
-public:
-  const std::string& id() const;
-  std::string& id();
+using object_t = moveit_msgs::CollisionObject;
 
-  const std::string& reference_frame() const;
-  std::string& reference_frame();
+// struct object_t : std::tuple<std::string, std::string, std::string, geometry_msgs::Pose>
+// {
+// private: 
+//   Eigen::Vector3d scale_;
+// public:
+//   const std::string& id() const;
+//   std::string& id();
 
-  const std::string& path_to_mesh() const;
-  std::string& path_to_mesh();
+//   const std::string& reference_frame() const;
+//   std::string& reference_frame();
 
-  const geometry_msgs::Pose& mesh_pose() const;
-  geometry_msgs::Pose& mesh_pose();
+//   const std::string& path_to_mesh() const;
+//   std::string& path_to_mesh();
 
-  const Eigen::Vector3d& scale() const;
-  Eigen::Vector3d& scale();
-};
+//   const geometry_msgs::Pose& mesh_pose() const;
+//   geometry_msgs::Pose& mesh_pose();
+
+//   const Eigen::Vector3d& scale() const;
+//   Eigen::Vector3d& scale();
+// };
 
 struct tf_named_object_t : object_t
 {
@@ -133,9 +135,9 @@ protected:
   bool check(const std::vector<std::string>& tf_names, const double& timeout_s, bool check_if_available, std::string& what);
 };
 
-  moveit_msgs::CollisionObject toCollisionObject(const std::string& collisionObjID, const std::string& path_to_mesh,
-                                                 const std::string& reference_frame, const geometry_msgs::Pose& pose,
-                                                 const Eigen::Vector3d scale = Eigen::Vector3d(1, 1, 1));
+  // moveit_msgs::CollisionObject toCollisionObject(const std::string& collisionObjID, const std::string& path_to_mesh,
+  //                                                const std::string& reference_frame, const geometry_msgs::Pose& pose,
+  //                                                const Eigen::Vector3d scale = Eigen::Vector3d(1, 1, 1));
 
   moveit_msgs::CollisionObject toCollisionObject(const object_t& obj);
   object_t toCollisionObject(const moveit_msgs::CollisionObject& obj);
