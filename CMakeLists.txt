@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(moveit_object_loader)
+project(cnr_tf_named_object_loader)
 
 # #################################
 # Preamble
@@ -22,7 +22,7 @@ find_package(catkin REQUIRED COMPONENTS
 ###################################
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES moveit_object_loader
+  LIBRARIES cnr_tf_named_object_loader
   CATKIN_DEPENDS moveit_msgs moveit_ros_planning_interface
   DEPENDS Eigen3
 )
@@ -38,7 +38,7 @@ include_directories(
 
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
-   src/${PROJECT_NAME}/moveit_object_loader.cpp
+   src/${PROJECT_NAME}/cnr_tf_named_object_loader.cpp
 )
 add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME}
@@ -47,7 +47,7 @@ target_link_libraries(${PROJECT_NAME}
   Eigen3::Eigen
 )
 
-add_executable(${PROJECT_NAME}_node src/moveit_object_loader_node.cpp)
+add_executable(${PROJECT_NAME}_node src/cnr_tf_named_object_loader_node.cpp)
 add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
@@ -85,7 +85,7 @@ install(DIRECTORY include/${PROJECT_NAME}/
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_moveit_object_loader.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_cnr_tf_named_object_loader.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

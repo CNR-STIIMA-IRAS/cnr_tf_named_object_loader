@@ -1,15 +1,15 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>moveit_object_loader</name>
+  <name>cnr_tf_named_object_loader</name>
   <version>0.0.0</version>
-  <description>The moveit_object_loader package</description>
+  <description>The cnr_tf_named_object_loader package</description>
 
   <maintainer email="nicola.pedrocchi@stiima.cnr.it">Nicola Pedrocchi</maintainer>
 
   <license>Apache License</license>
   <license file="LICENSE">Apache License</license>
 
-  <!-- <url type="website">http://wiki.ros.org/moveit_object_loader</url> -->
+  <!-- <url type="website">http://wiki.ros.org/cnr_tf_named_object_loader</url> -->
 
   <author email="nicola.pedrocchi@stiima.cnr.it">Nicola Pedrocchi</author>
 

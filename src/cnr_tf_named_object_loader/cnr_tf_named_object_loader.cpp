@@ -26,12 +26,12 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <std_msgs/ColorRGBA.h>
 
-#include <moveit_object_loader/moveit_object_loader.h>
+#include <cnr_tf_named_object_loader/cnr_tf_named_object_loader.h>
 
 using namespace std::chrono;
 using namespace std::chrono_literals;
 
-namespace moveit_object_loader
+namespace cnr_tf_named_object_loader
 {
 std::string to_string(const objects_t& vv)
 {
@@ -776,4 +776,4 @@ void TFNamedObjectsManager::TFPublisherThread::thread_function()
 
 
 
-}  // namespace moveit_object_loader
+}  // namespace cnr_tf_named_object_loader

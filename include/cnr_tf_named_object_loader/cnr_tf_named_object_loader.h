@@ -18,7 +18,7 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/transform_broadcaster.h>
 
-namespace moveit_object_loader 
+namespace cnr_tf_named_object_loader 
 { 
 
 using object_t = moveit_msgs::CollisionObject;

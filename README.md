@@ -1,1 +1,1 @@
-# moveit_object_loader
+# cnr_tf_named_object_loader
