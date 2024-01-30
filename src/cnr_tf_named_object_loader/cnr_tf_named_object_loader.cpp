@@ -558,9 +558,7 @@ bool TFNamedObjectsManager::are_tf_unavailable(const std::vector<std::string>& t
 bool TFNamedObjectsManager::removeObjects(const std::vector<std::string>& ids, const double timeout_s,
                                           std::string& what)
 {
-  std::cout << "Try to remove: " << to_string(ids) << std::endl;
   std::vector<std::string> vv = planning_scene_interface_.getKnownObjectNames();
-  std::cout << "Known Objects: " << to_string(vv) << std::endl;
   std::vector<std::string> _ids;
   for (const auto& v : vv)
   {
@@ -571,12 +569,8 @@ bool TFNamedObjectsManager::removeObjects(const std::vector<std::string>& ids, c
   }
   planning_scene_interface_.removeCollisionObjects(_ids);
 
-  bool ret = waitUntil(ids, { TFNamedObjectsManager::ObjectState::DETACHED, TFNamedObjectsManager::ObjectState::UNKNOWN },
+  return waitUntil(ids, { TFNamedObjectsManager::ObjectState::DETACHED, TFNamedObjectsManager::ObjectState::UNKNOWN },
                    timeout_s, what);
-
-  vv = planning_scene_interface_.getKnownObjectNames();
-  std::cout << "Known Objects: " << to_string(vv) << std::endl;
-  return ret;
 }
 
 bool TFNamedObjectsManager::removeNamedObjects(const std::vector<std::string>& ids, const double timeout_s,
