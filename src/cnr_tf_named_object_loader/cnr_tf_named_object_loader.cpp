@@ -402,7 +402,7 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
 
   // =====================================
   // ADD TF PUBLISHER
-  ROS_INFO("Add TF Publisher (timeout: %f)", timeout_s);
+  ROS_INFO("[Add Named Object] Add TF Publisher (timeout: %f)", timeout_s);
   for (const auto& tf_named_object : tf_named_objects)
   {
     // std::cout << tf_named_object.mesh_pose() << std::endl;
@@ -413,9 +413,9 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
 
   // =====================================
   // CHECK IF THE OBJ TF  DO EXIST
-  ROS_INFO("Check if TF are alreay published (timeout: %f)", timeout_s);
+  ROS_INFO("[Add Named Object] Check if TF are published (timeout: %f)", timeout_s);
   _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
-  if (!are_tf_unavailable(get_id(tf_named_objects), _timeout_s, what))
+  if (!are_tf_available(get_id(tf_named_objects), _timeout_s, what))
   {
     return false;
   }
@@ -470,7 +470,9 @@ bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, 
   if (cobjs.size())
   {
     ROS_INFO("[Add Object] Apply and Check %zu", cobjs.size());
-    return applyAndCheck(cobjs, colors, _timeout_s, what);
+    bool ret = applyAndCheck(cobjs, colors, _timeout_s, what);
+    ROS_INFO("[Add Object] Apply and Check returned %s", (ret?"OK":"FAILED"));
+    return ret;
   }
   return true;
 }
@@ -556,7 +558,9 @@ bool TFNamedObjectsManager::are_tf_unavailable(const std::vector<std::string>& t
 bool TFNamedObjectsManager::removeObjects(const std::vector<std::string>& ids, const double timeout_s,
                                           std::string& what)
 {
+  std::cout << "Try to remove: " << to_string(ids) << std::endl;
   std::vector<std::string> vv = planning_scene_interface_.getKnownObjectNames();
+  std::cout << "Known Objects: " << to_string(vv) << std::endl;
   std::vector<std::string> _ids;
   for (const auto& v : vv)
   {
@@ -567,8 +571,12 @@ bool TFNamedObjectsManager::removeObjects(const std::vector<std::string>& ids, c
   }
   planning_scene_interface_.removeCollisionObjects(_ids);
 
-  return waitUntil(ids, { TFNamedObjectsManager::ObjectState::DETACHED, TFNamedObjectsManager::ObjectState::UNKNOWN },
+  bool ret = waitUntil(ids, { TFNamedObjectsManager::ObjectState::DETACHED, TFNamedObjectsManager::ObjectState::UNKNOWN },
                    timeout_s, what);
+
+  vv = planning_scene_interface_.getKnownObjectNames();
+  std::cout << "Known Objects: " << to_string(vv) << std::endl;
+  return ret;
 }
 
 bool TFNamedObjectsManager::removeNamedObjects(const std::vector<std::string>& ids, const double timeout_s,
