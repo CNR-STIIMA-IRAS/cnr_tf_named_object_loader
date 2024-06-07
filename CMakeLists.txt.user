@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
+<<<<<<< HEAD
 <!-- Written by QtCreator 4.11.0, 2024-06-07T10:07:03. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
   <value type="QByteArray">{8cb050f5-86f8-4592-90d5-f7cd0518211b}</value>
+=======
+<!-- Written by QtCreator 4.11.0, 2024-06-06T18:17:59. -->
+<qtcreator>
+ <data>
+  <variable>EnvironmentId</variable>
+  <value type="QByteArray">{de85043d-48eb-4c03-accc-615907ae9adf}</value>
+>>>>>>> 94f1c6c62ee00c53d0867f82f6e38a5e043639ff
  </data>
  <data>
   <variable>ProjectExplorer.Project.ActiveTarget</variable>
@@ -54,17 +62,25 @@
  </data>
  <data>
   <variable>ProjectExplorer.Project.PluginSettings</variable>
+<<<<<<< HEAD
   <valuemap type="QVariantMap">
    <valuelist type="QVariantList" key="ClangCodeModel.CustomCommandLineKey"/>
    <value type="bool" key="ClangCodeModel.UseGlobalConfig">true</value>
   </valuemap>
+=======
+  <valuemap type="QVariantMap"/>
+>>>>>>> 94f1c6c62ee00c53d0867f82f6e38a5e043639ff
  </data>
  <data>
   <variable>ProjectExplorer.Project.Target.0</variable>
   <valuemap type="QVariantMap">
    <value type="QString" key="ProjectExplorer.ProjectConfiguration.DefaultDisplayName">Imported Kit</value>
    <value type="QString" key="ProjectExplorer.ProjectConfiguration.DisplayName">Imported Kit</value>
+<<<<<<< HEAD
    <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">{d9893aa5-429e-4c30-9218-46bf48348501}</value>
+=======
+   <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">{6de63d4c-53de-40df-ae3f-f09bc03c0190}</value>
+>>>>>>> 94f1c6c62ee00c53d0867f82f6e38a5e043639ff
    <value type="int" key="ProjectExplorer.Target.ActiveBuildConfiguration">0</value>
    <value type="int" key="ProjectExplorer.Target.ActiveDeployConfiguration">0</value>
    <value type="int" key="ProjectExplorer.Target.ActiveRunConfiguration">0</value>

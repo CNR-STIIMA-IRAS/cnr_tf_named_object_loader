@@ -36,12 +36,6 @@ bool add(moveit_msgs::ApplyPlanningScene::Request  &req,
   return (res.success = true);
 }
 
-bool remove(moveit_msgs::ApplyPlanningScene::Request  &req,
-         moveit_msgs::ApplyPlanningScene::Response &res);
-
-bool move(moveit_msgs::ApplyPlanningScene::Request  &req,
-         moveit_msgs::ApplyPlanningScene::Response &res);
-
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "cnr_tf_named_object_loader");
@@ -51,10 +45,6 @@ int main(int argc, char** argv)
 
   ros::ServiceServer add_service = n.advertiseService("load_tf_named_object", add);
   ROS_INFO("Ready to add objects to the scene");
-  ros::ServiceServer move_service = n.advertiseService("move_tf_named_object", move);
-  ROS_INFO("Ready to move objects to the scene");
-  ros::ServiceServer remove_service = n.advertiseService("unload_tf_named_object", remove);
-  ROS_INFO("Ready to remove objects to the scene");
 
   ros::spin();
 
