@@ -323,8 +323,17 @@ TFNamedObjectsManager::TFNamedObjectsManager()  // : tfBuffer_(ros::Duration(2.0
  * @return true
  * @return false
  */
+
+bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named_objects, double timeout_s, std::string& what)
+{
+  std_msgs::ColorRGBA color;
+  color.r = 255;  color.g = 255;  color.b = 255;  color.a = 1;
+  std::vector<std_msgs::ColorRGBA> colors(tf_named_objects.size(), color);
+
+  return addNamedTFObjects(tf_named_objects,timeout_s,colors,what);
+}
 bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named_objects, double timeout_s,
-                                              std::string& what)
+                                              const std::vector<std_msgs::ColorRGBA>& colors, std::string& what)
 {
   if (!tfListener_)
   {
@@ -395,7 +404,7 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
   // ADD OBJECTS
   ROS_INFO("[Add Named Object] Add Objects (timeout: %f)", timeout_s);
   _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
-  if (!addObjects(objs, _timeout_s, what))
+  if (!addObjects(objs, _timeout_s, colors, what))
   {
     return false;
   }
@@ -425,6 +434,15 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
 
 bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, std::string& what)
 {
+  std_msgs::ColorRGBA color;
+  color.r = 255;  color.g = 255;  color.b = 255;  color.a = 1;
+  std::vector<std_msgs::ColorRGBA> colors(objs.size(), color);
+
+  return addObjects(objs,timeout_s,colors,what);
+}
+
+bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, const std::vector<std_msgs::ColorRGBA>& colors, std::string& what)
+{
   if (!tfListener_)
   {
     tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
@@ -445,7 +463,7 @@ bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, 
   double _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
 
   std::vector<moveit_msgs::CollisionObject> cobjs;
-  std::vector<std_msgs::ColorRGBA> colors;
+  std::vector<std_msgs::ColorRGBA> ccolors;
   std::vector<std::string> v = planning_scene_interface_.getKnownObjectNames();
 
   ROS_INFO("[Add Object] Fill Collision Object msg");
@@ -460,17 +478,12 @@ bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, 
     //                                   objs.at(i).mesh_pose(), objs.at(i).scale()));
 
     cobjs.push_back(objs.at(i));
-    std_msgs::ColorRGBA color;
-    color.r = 255;
-    color.g = 255;
-    color.b = 255;
-    color.a = 1;
-    colors.push_back(color);
+    ccolors.push_back(colors.at(i));
   }
   if (cobjs.size())
   {
     ROS_INFO("[Add Object] Apply and Check %zu", cobjs.size());
-    bool ret = applyAndCheck(cobjs, colors, _timeout_s, what);
+    bool ret = applyAndCheck(cobjs, ccolors, _timeout_s, what);
     ROS_INFO("[Add Object] Apply and Check returned %s", (ret?"OK":"FAILED"));
     return ret;
   }

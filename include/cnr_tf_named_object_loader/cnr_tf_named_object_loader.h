@@ -77,7 +77,9 @@ public:
   TFNamedObjectsManager(TFNamedObjectsManager&&) = delete;
 
   bool addObjects(const objects_t& objs, double timeout_s, std::string& what);
+  bool addObjects(const objects_t& objs, double timeout_s, const std::vector<std_msgs::ColorRGBA>& colors, std::string& what);
   bool addNamedTFObjects(const tf_named_objects_t& objs, double timeout_s, std::string& what);
+  bool addNamedTFObjects(const tf_named_objects_t& objs, double timeout_s, const std::vector<std_msgs::ColorRGBA>& colors, std::string& what);
   
   bool removeObjects(const std::vector<std::string>& ids, const double timeout_s, std::string& what);
   bool removeNamedObjects(const std::vector<std::string>& ids, const double timeout_s, std::string& what);
