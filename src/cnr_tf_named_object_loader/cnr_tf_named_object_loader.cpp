@@ -446,7 +446,7 @@ bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, 
 
   std::vector<moveit_msgs::CollisionObject> cobjs;
   std::vector<std_msgs::ColorRGBA> colors;
-  std::vector<std::string> v = planning_scene_interface_.getKnownObjectNames();
+//  std::vector<std::string> v = planning_scene_interface_.getKnownObjectNames();
 
   ROS_INFO("[Add Object] Fill Collision Object msg");
   for (size_t i = 0; i < objs.size(); i++)
