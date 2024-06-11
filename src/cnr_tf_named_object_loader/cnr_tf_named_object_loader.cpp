@@ -526,7 +526,7 @@ bool TFNamedObjectsManager::check(const std::vector<std::string>& tf_names, cons
     {
       std::string parent = config[_tf_names.back().c_str()]["parent"].as<std::string>();
       std::string tf_err;
-      double _lasting_time = (duration_cast<seconds>(high_resolution_clock::now() - start_time).count() - timeout_s);
+      double _lasting_time = (timeout_s-duration_cast<seconds>(high_resolution_clock::now() - start_time).count());
       auto _timeout_s = ros::Duration((_lasting_time < 1.0 ? 1.0 : _lasting_time));
       frame_update_available =
           tfBuffer_.canTransform(_tf_names.back(), parent, ros::Time::now(), _timeout_s, &tf_err);
@@ -597,22 +597,26 @@ bool TFNamedObjectsManager::removeNamedObjects(const std::vector<std::string>& i
   {
     return false;
   }
-  std::vector<std::string> vv;
-  for (const auto& p : tf_publishers_)
+
+  std::vector<std::string> remove_tf;
+  std::vector<TFPublisherThread::Ptr>::iterator it;
+  for(const std::string& id : ids)
   {
-    vv.push_back(p->tf_object_name());
+    it = std::find_if(tf_publishers_.begin(), tf_publishers_.end(),
+                      [&id](const TFPublisherThread::Ptr& tf_publisher) {return tf_publisher->tf_object_name() == id;});
+
+    if(it != tf_publishers_.end())
+    {
+      remove_tf.push_back((*it)->tf_object_name());
+      (*it)->exit();
+      tf_publishers_.erase(it);
+    }
   }
 
-  for (auto& tf_publisher : tf_publishers_)
-  {
-    tf_publisher->exit();
-  }
-  tf_publishers_.clear();
-
-  if (are_tf_available(vv, timeout_s, what))
+  if (are_tf_available(remove_tf, timeout_s, what))
   {
     what =
-        "Timeout Expired. The TF " + to_string(vv) + " are still the scene after " + std::to_string(timeout_s) + "sec.";
+        "Timeout Expired. The TF " + to_string(remove_tf) + " are still the scene after " + std::to_string(timeout_s) + "sec.";
     return false;
   }
   return true;
