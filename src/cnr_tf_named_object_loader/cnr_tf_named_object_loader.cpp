@@ -276,7 +276,10 @@ object_t toCollisionObject(const moveit_msgs::CollisionObject& obj)
 // ======================================================================
 
 TFNamedObjectsManager::TFNamedObjectsManager()  // : tfBuffer_(ros::Duration(2.0))
-    { /* nothing to do so far */ };
+{
+  tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
+  ros::Duration(tfBuffer_.getCacheLength().toSec()/100.0).sleep();
+};
 
 // moveit_msgs::CollisionObject toCollisionObject(const std::string& collisionObjID, const std::string& path_to_mesh,
 //                                                const std::string& reference_frame, const geometry_msgs::Pose& pose,
@@ -328,7 +331,7 @@ TFNamedObjectsManager::TFNamedObjectsManager()  // : tfBuffer_(ros::Duration(2.0
 bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named_objects, double timeout_s, std::string& what)
 {
   std_msgs::ColorRGBA color;
-  color.r = 255;  color.g = 255;  color.b = 255;  color.a = 1;
+  color.r = 255;  color.g = 0;  color.b = 0;  color.a = 1;
   std::vector<std_msgs::ColorRGBA> colors(tf_named_objects.size(), color);
 
   return addNamedTFObjects(tf_named_objects,timeout_s,colors,what);
@@ -417,7 +420,7 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
   {
     // std::cout << tf_named_object.mesh_pose() << std::endl;
     TFPublisherThread::Ptr tf_pub(
-        new TFPublisherThread(tf_named_object.tf_name(), tf_named_object.header.frame_id, tf_named_object.pose));
+          new TFPublisherThread(tf_named_object.tf_name(), tf_named_object.header.frame_id, tf_named_object.pose));
     tf_publishers_.push_back(tf_pub);
   }
 
@@ -457,14 +460,14 @@ bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, 
   if (!are_tf_available(reference_frames, timeout_s, what))
   {
     what = "Timeout Expired. Some of the objects " + to_string(objs) +
-           " refer to frames that are not in the list of the tf  (lookup timeout: " + std::to_string(timeout_s) +
-           "sec): " + what;
+        " refer to frames that are not in the list of the tf  (lookup timeout: " + std::to_string(timeout_s) +
+        "sec): " + what;
     return false;
   }
   double _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
 
   std::vector<moveit_msgs::CollisionObject> cobjs;
-//  std::vector<std::string> v = planning_scene_interface_.getKnownObjectNames();
+  //  std::vector<std::string> v = planning_scene_interface_.getKnownObjectNames();
   std::vector<std_msgs::ColorRGBA> ccolors;
 
   ROS_INFO("[Add Object] Fill Collision Object msg");
@@ -547,8 +550,8 @@ bool TFNamedObjectsManager::check(const std::vector<std::string>& tf_names, cons
       if (duration_cast<seconds>(high_resolution_clock::now() - start_time).count() > timeout_s)
       {
         what = "Timeout Expired. Checked the status of the frames: " + to_string(tf_names) +
-               ". The actual available frames are " + to_string(_frames) + " (timeout: " + std::to_string(timeout_s) +
-               "sec)";
+            ". The actual available frames are " + to_string(_frames) + " (timeout: " + std::to_string(timeout_s) +
+            "sec)";
         return false;
       }
     }
@@ -671,7 +674,7 @@ bool TFNamedObjectsManager::waitUntil(const std::vector<std::string>& object_nam
   }
 
   what = "Timeout Expired. The objects " + to_string(object_names) + " are not yet in the scene after " +
-         std::to_string(timeout) + "sec.";
+      std::to_string(timeout) + "sec.";
   return false;
 }
 
@@ -705,10 +708,10 @@ bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::Collisi
   {
     std::vector<TFNamedObjectsManager::ObjectState> st =
         operations.at(i) != moveit_msgs::CollisionObject::REMOVE ?
-            std::vector<TFNamedObjectsManager::ObjectState>{ TFNamedObjectsManager::ObjectState::KNOWN,
-                                                             TFNamedObjectsManager::ObjectState::ATTACHED } :
-            std::vector<TFNamedObjectsManager::ObjectState>{ TFNamedObjectsManager::ObjectState::UNKNOWN,
-                                                             TFNamedObjectsManager::ObjectState::DETACHED };
+          std::vector<TFNamedObjectsManager::ObjectState>{ TFNamedObjectsManager::ObjectState::KNOWN,
+          TFNamedObjectsManager::ObjectState::ATTACHED } :
+          std::vector<TFNamedObjectsManager::ObjectState>{ TFNamedObjectsManager::ObjectState::UNKNOWN,
+          TFNamedObjectsManager::ObjectState::DETACHED };
 
     std::vector<std::string> _object_names =
         cumulative_check ? object_names : std::vector<std::string>{ object_names.at(i) };
