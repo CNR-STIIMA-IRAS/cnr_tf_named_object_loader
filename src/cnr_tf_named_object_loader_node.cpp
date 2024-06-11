@@ -43,8 +43,9 @@ int main(int argc, char** argv)
 
   tf_named_objects_.reset(new cnr_tf_named_object_loader::TFNamedObjectsManager());
 
-  ros::ServiceServer service = n.advertiseService("load_tf_named_object", add);
+  ros::ServiceServer add_service = n.advertiseService("load_tf_named_object", add);
   ROS_INFO("Ready to add objects to the scene");
+
   ros::spin();
 
   return 0;
