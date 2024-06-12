@@ -5,27 +5,16 @@
 #include <memory>
 #include <stdexcept>
 #include <thread>
-#include "ros/duration.h"
 
 #include <yaml-cpp/node/parse.h>
 #include <yaml-cpp/yaml.h>
-
 #include <tf2/buffer_core.h>
-
-#include <ros/init.h>
-#include <ros/time.h>
-
-#include <moveit_msgs/CollisionObject.h>
-#include <moveit_msgs/ApplyPlanningScene.h>
-#include <geometry_msgs/TransformStamped.h>
-
-#include <shape_msgs/Mesh.h>
+#include <rclcpp/rclcpp.hpp>
+#include <moveit_msgs/srv/apply_planning_scene.hpp>
+#include <shape_msgs/msg/mesh.hpp>
 #include <geometric_shapes/shape_operations.h>
-
-#include <geometry_msgs/Pose.h>
-#include <geometry_msgs/PoseStamped.h>
-#include <std_msgs/ColorRGBA.h>
-
+#include <rclcpp/executors/static_single_threaded_executor.hpp>
+#include <tf2_ros/buffer_interface.h>
 #include <cnr_tf_named_object_loader/cnr_tf_named_object_loader.h>
 
 using namespace std::chrono;
@@ -190,7 +179,7 @@ tf_named_object_t& tf_named_object_t::operator=(const object_t& obj)
   return *this;
 }
 
-object_t toCollisionObject(const moveit_msgs::CollisionObject& obj)
+object_t toCollisionObject(const moveit_msgs::msg::CollisionObject& obj)
 {
   object_t ret;
   ret = obj;
@@ -233,14 +222,14 @@ object_t toCollisionObject(const moveit_msgs::CollisionObject& obj)
       shapes::constructMsgFromShape(m, mesh_msg);
       delete m;
 
-      shape_msgs::Mesh mesh = boost::get<shape_msgs::Mesh>(mesh_msg);
+      shape_msgs::msg::Mesh mesh = boost::get<shape_msgs::msg::Mesh>(mesh_msg);
       if ((obj.mesh_poses.size() <= i_mesh) || (obj.mesh_poses.size() - 1 != obj.meshes.size()))
       {
         // TO DO
         if (i_mesh == 0)
         {
           ret.mesh_poses.clear();
-          ret.mesh_poses.push_back(geometry_msgs::Pose());
+          ret.mesh_poses.push_back(geometry_msgs::msg::Pose());
           ret.mesh_poses.back().orientation.w = 1.0;
           ret.meshes.clear();
           ret.meshes.push_back(mesh);
@@ -261,7 +250,7 @@ object_t toCollisionObject(const moveit_msgs::CollisionObject& obj)
         }
       }
       // ret.mesh_poses.push_back(pose);
-      ret.operation = moveit_msgs::CollisionObject::ADD;
+      ret.operation = moveit_msgs::msg::CollisionObject::ADD;
     }
   }
   return ret;
@@ -275,10 +264,12 @@ object_t toCollisionObject(const moveit_msgs::CollisionObject& obj)
 // ==
 // ======================================================================
 
-TFNamedObjectsManager::TFNamedObjectsManager()  // : tfBuffer_(ros::Duration(2.0))
+TFNamedObjectsManager::TFNamedObjectsManager(const rclcpp::Node::SharedPtr& node):
+  node_(node),
+  tfBuffer_(tf2_ros::Buffer (std::make_shared<rclcpp::Clock>(RCL_ROS_TIME)))
 {
   tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
-  ros::Duration(tfBuffer_.getCacheLength().toSec()/100.0).sleep();
+  rclcpp::sleep_for(nanoseconds(tfBuffer_.getCacheLength().count()/(100)));
 };
 
 // moveit_msgs::CollisionObject toCollisionObject(const std::string& collisionObjID, const std::string& path_to_mesh,
@@ -330,22 +321,22 @@ TFNamedObjectsManager::TFNamedObjectsManager()  // : tfBuffer_(ros::Duration(2.0
 
 bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named_objects, double timeout_s, std::string& what)
 {
-  std_msgs::ColorRGBA color;
+  std_msgs::msg::ColorRGBA color;
   color.r = 255;  color.g = 0;  color.b = 0;  color.a = 1;
-  std::vector<std_msgs::ColorRGBA> colors(tf_named_objects.size(), color);
+  std::vector<std_msgs::msg::ColorRGBA> colors(tf_named_objects.size(), color);
 
   return addNamedTFObjects(tf_named_objects,timeout_s,colors,what);
 }
 bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named_objects, double timeout_s,
-                                              const std::vector<std_msgs::ColorRGBA>& colors, std::string& what)
+                                              const std::vector<std_msgs::msg::ColorRGBA>& colors, std::string& what)
 {
   if (!tfListener_)
   {
     tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
-    ros::Duration(tfBuffer_.getCacheLength()).sleep();
+    rclcpp::sleep_for(tfBuffer_.getCacheLength().count()*1ms);
   }
 
-  ROS_INFO("[Add Named Object] Add %zu objects", tf_named_objects.size());
+  RCLCPP_INFO(node_->get_logger(), "[Add Named Object] Add %zu objects", tf_named_objects.size());
   double _timeout_s = timeout_s;
   auto start_time = high_resolution_clock::now();
 
@@ -353,9 +344,8 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
   // CHECK IF THE TF PARENTS DO EXIST
   // =====================================
   auto reference_frames = get_reference_frame_id(tf_named_objects);
-  ROS_INFO("[Add Named Object] Check if the reference frames (%s) are in the list of TF published (timeout: %f)",
-           to_string(reference_frames).c_str(), timeout_s);
-  auto now = high_resolution_clock::now();
+  RCLCPP_INFO(node_->get_logger(),"[Add Named Object] Check if the reference frames (%s) are in the list of TF published (timeout: %f)",
+              to_string(reference_frames).c_str(), timeout_s);
   if (!are_tf_available(reference_frames, timeout_s, what))
   {
     return false;
@@ -365,7 +355,7 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
   // REMOVE ALREADY PRESENT OBJECTS
   // =====================================
   _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
-  ROS_INFO("[Add Named Object] Remove objects if present (timeout: %f)", _timeout_s);
+  RCLCPP_INFO(node_->get_logger(),"[Add Named Object] Remove objects if present (timeout: %f)", _timeout_s);
   if (!removeObjects(get_id(tf_named_objects), _timeout_s, what))
   {
     return false;
@@ -375,26 +365,26 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
   // == REMOVE ALREADY EXISTING TF PUBLISHER OF THE OBJ TF FRAME
   // =====================================
   _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
-  ROS_INFO("[Add Named Object] Remove TF publisher present (timeout: %f)", _timeout_s);
+  RCLCPP_INFO(node_->get_logger(),"[Add Named Object] Remove TF publisher present (timeout: %f)", _timeout_s);
   objects_t objs;
   for (const auto& obj : tf_named_objects)
   {
     // Check If the TF OBJ is published by this library
-    ROS_INFO("[Add Named Object] Check if the OBJ is already published by this library");
+    RCLCPP_INFO(node_->get_logger(),"[Add Named Object] Check if the OBJ is already published by this library");
     auto it = std::find_if(tf_publishers_.begin(), tf_publishers_.end(), [&obj](const TFPublisherThread::Ptr& tf_pub) {
       return tf_pub->tf_object_name() == obj.tf_name();
     });
     if (it != tf_publishers_.end())
     {
-      ROS_INFO("[Add Named Object] The OBJ is already published by this library!");
-      ROS_INFO("[Add Named Object] Exit from the thread..");
+      RCLCPP_INFO(node_->get_logger(),"[Add Named Object] The OBJ is already published by this library!");
+      RCLCPP_INFO(node_->get_logger(),"[Add Named Object] Exit from the thread..");
       (*it)->exit();
       tf_publishers_.erase(it);
     }
 
     // Check If there are other TF publisher
     _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
-    ROS_INFO("[Add Named Object] Check if other TF publisher may overlap our TF (timeout: %f)", _timeout_s);
+    RCLCPP_INFO(node_->get_logger(),"[Add Named Object] Check if other TF publisher may overlap our TF (timeout: %f)", _timeout_s);
     if (!are_tf_unavailable({ obj.tf_name() }, timeout_s, what))
     {
       return false;
@@ -406,7 +396,7 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
 
   // =====================================
   // ADD OBJECTS
-  ROS_INFO("[Add Named Object] Add Objects (timeout: %f)", timeout_s);
+  RCLCPP_INFO(node_->get_logger(),"[Add Named Object] Add Objects (timeout: %f)", timeout_s);
   _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
   if (!addObjects(objs, _timeout_s, colors, what))
   {
@@ -415,18 +405,18 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
 
   // =====================================
   // ADD TF PUBLISHER
-  ROS_INFO("[Add Named Object] Add TF Publisher (timeout: %f)", timeout_s);
+  RCLCPP_INFO(node_->get_logger(),"[Add Named Object] Add TF Publisher (timeout: %f)", timeout_s);
   for (const auto& tf_named_object : tf_named_objects)
   {
     // std::cout << tf_named_object.mesh_pose() << std::endl;
     TFPublisherThread::Ptr tf_pub(
-          new TFPublisherThread(tf_named_object.tf_name(), tf_named_object.header.frame_id, tf_named_object.pose));
+          new TFPublisherThread(node_,tf_named_object.tf_name(), tf_named_object.header.frame_id, tf_named_object.pose));
     tf_publishers_.push_back(tf_pub);
   }
 
   // =====================================
   // CHECK IF THE OBJ TF  DO EXIST
-  ROS_INFO("[Add Named Object] Check if TF are published (timeout: %f)", timeout_s);
+  RCLCPP_INFO(node_->get_logger(),"[Add Named Object] Check if TF are published (timeout: %f)", timeout_s);
   _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
   if (!are_tf_available(get_id(tf_named_objects), _timeout_s, what))
   {
@@ -438,24 +428,24 @@ bool TFNamedObjectsManager::addNamedTFObjects(const tf_named_objects_t& tf_named
 
 bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, std::string& what)
 {
-  std_msgs::ColorRGBA color;
+  std_msgs::msg::ColorRGBA color;
   color.r = 255;  color.g = 255;  color.b = 255;  color.a = 1;
-  std::vector<std_msgs::ColorRGBA> colors(objs.size(), color);
+  std::vector<std_msgs::msg::ColorRGBA> colors(objs.size(), color);
 
   return addObjects(objs,timeout_s,colors,what);
 }
 
-bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, const std::vector<std_msgs::ColorRGBA>& colors, std::string& what)
+bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, const std::vector<std_msgs::msg::ColorRGBA>& colors, std::string& what)
 {
   if (!tfListener_)
   {
     tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
-    ros::Duration(tfBuffer_.getCacheLength()).sleep();
+    rclcpp::sleep_for(tfBuffer_.getCacheLength());
   }
 
   auto start_time = high_resolution_clock::now();
-  ROS_INFO("[Add Object] Add %zu objects", objs.size());
-  ROS_INFO("[Add Object] Check if TF reference frame is published");
+  RCLCPP_INFO(node_->get_logger(),"[Add Object] Add %zu objects", objs.size());
+  RCLCPP_INFO(node_->get_logger(),"[Add Object] Check if TF reference frame is published");
   auto reference_frames = get_reference_frame_id(objs);
   if (!are_tf_available(reference_frames, timeout_s, what))
   {
@@ -466,11 +456,11 @@ bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, 
   }
   double _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
 
-  std::vector<moveit_msgs::CollisionObject> cobjs;
+  std::vector<moveit_msgs::msg::CollisionObject> cobjs;
   //  std::vector<std::string> v = planning_scene_interface_.getKnownObjectNames();
-  std::vector<std_msgs::ColorRGBA> ccolors;
+  std::vector<std_msgs::msg::ColorRGBA> ccolors;
 
-  ROS_INFO("[Add Object] Fill Collision Object msg");
+  RCLCPP_INFO(node_->get_logger(),"[Add Object] Fill Collision Object msg");
   for (size_t i = 0; i < objs.size(); i++)
   {
     if (objs.at(i).mesh_poses.size() == 0 && objs.at(i).primitive_poses.size() == 0 &&
@@ -486,9 +476,9 @@ bool TFNamedObjectsManager::addObjects(const objects_t& objs, double timeout_s, 
   }
   if (cobjs.size())
   {
-    ROS_INFO("[Add Object] Apply and Check %zu", cobjs.size());
+    RCLCPP_INFO(node_->get_logger(),"[Add Object] Apply and Check %zu", cobjs.size());
     bool ret = applyAndCheck(cobjs, ccolors, _timeout_s, what);
-    ROS_INFO("[Add Object] Apply and Check returned %s", (ret?"OK":"FAILED"));
+    RCLCPP_INFO(node_->get_logger(),"[Add Object] Apply and Check returned %s", (ret?"OK":"FAILED"));
     return ret;
   }
   return true;
@@ -500,7 +490,7 @@ bool TFNamedObjectsManager::check(const std::vector<std::string>& tf_names, cons
   if (!tfListener_)
   {
     tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
-    ros::Duration(tfBuffer_.getCacheLength()).sleep();
+    rclcpp::sleep_for(tfBuffer_.getCacheLength());
   }
 
   auto start_time = high_resolution_clock::now();
@@ -526,10 +516,10 @@ bool TFNamedObjectsManager::check(const std::vector<std::string>& tf_names, cons
     {
       std::string parent = config[_tf_names.back().c_str()]["parent"].as<std::string>();
       std::string tf_err;
-      double _lasting_time = (timeout_s-duration_cast<seconds>(high_resolution_clock::now() - start_time).count());
-      auto _timeout_s = ros::Duration((_lasting_time < 1.0 ? 1.0 : _lasting_time));
+      int _lasting_time = (timeout_s-duration_cast<seconds>(high_resolution_clock::now() - start_time).count())*1e9;
+      auto _timeout_s = nanoseconds((_lasting_time < int(1e9) ? int(1e9) : _lasting_time));
       frame_update_available =
-          tfBuffer_.canTransform(_tf_names.back(), parent, ros::Time::now(), _timeout_s, &tf_err);
+          tfBuffer_.canTransform(_tf_names.back(), parent, high_resolution_clock::now(), _timeout_s, &tf_err);
     }
     else
     {
@@ -682,8 +672,8 @@ bool TFNamedObjectsManager::waitUntil(const std::vector<std::string>& object_nam
   return false;
 }
 
-bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::CollisionObject>& cov,
-                                          const std::vector<std_msgs::ColorRGBA>& colors, const double& timeout_s,
+bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::msg::CollisionObject>& cov,
+                                          const std::vector<std_msgs::msg::ColorRGBA>& colors, const double& timeout_s,
                                           std::string& what)
 {
   if (cov.size() == 0)
@@ -694,7 +684,7 @@ bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::Collisi
   std::vector<std::string> object_names;
   bool cumulative_check = true;
   std::vector<uint8_t> operations;
-  for (const moveit_msgs::CollisionObject& co : cov)
+  for (const moveit_msgs::msg::CollisionObject& co : cov)
   {
     operations.push_back(co.operation);
   }
@@ -711,7 +701,7 @@ bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::Collisi
   for (size_t i = 0; i < operations.size(); i++)
   {
     std::vector<TFNamedObjectsManager::ObjectState> st =
-        operations.at(i) != moveit_msgs::CollisionObject::REMOVE ?
+        operations.at(i) != moveit_msgs::msg::CollisionObject::REMOVE ?
           std::vector<TFNamedObjectsManager::ObjectState>{ TFNamedObjectsManager::ObjectState::KNOWN,
           TFNamedObjectsManager::ObjectState::ATTACHED } :
           std::vector<TFNamedObjectsManager::ObjectState>{ TFNamedObjectsManager::ObjectState::UNKNOWN,
@@ -733,10 +723,12 @@ bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::Collisi
   return ret;
 }
 
-TFNamedObjectsManager::TFPublisherThread::TFPublisherThread(const std::string& tf_obj_frame,
+TFNamedObjectsManager::TFPublisherThread::TFPublisherThread(const rclcpp::Node::SharedPtr& node,
+                                                            const std::string& tf_obj_frame,
                                                             const std::string& tf_reference_frame,
-                                                            const geometry_msgs::Pose& pose)
-  : tf_obj_frame_(tf_obj_frame)
+                                                            const geometry_msgs::msg::Pose& pose)
+  : node_(node)
+  , tf_obj_frame_(tf_obj_frame)
   , tf_reference_frame_(tf_reference_frame)
   , pose_(pose)
   , future_obj_(exit_signal_.get_future())
@@ -748,7 +740,7 @@ bool TFNamedObjectsManager::TFPublisherThread::exit()
   if (thread_.joinable())
   {
     exit_signal_.set_value();
-    ROS_ERROR("..... Waiting for joining the thread that publish the TF '%s'", tf_obj_frame_.c_str());
+    RCLCPP_ERROR(node_->get_logger(),"..... Waiting for joining the thread that publish the TF '%s'", tf_obj_frame_.c_str());
     thread_.join();
   }
   return true;
@@ -764,19 +756,19 @@ const std::string& TFNamedObjectsManager::TFPublisherThread::tf_reference_name()
   return tf_obj_frame_;
 }
 
-const geometry_msgs::Pose& TFNamedObjectsManager::TFPublisherThread::pose() const
+const geometry_msgs::msg::Pose& TFNamedObjectsManager::TFPublisherThread::pose() const
 {
   return pose_;
 }
 
 void TFNamedObjectsManager::TFPublisherThread::thread_function()
 {
-  ROS_INFO("Starting to Pulish of '%s'", tf_obj_frame_.c_str());
-  tf2_ros::TransformBroadcaster tf_broadcaster;
-  while (future_obj_.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout)
+  RCLCPP_INFO(node_->get_logger(),"Starting to Pulish of '%s'", tf_obj_frame_.c_str());
+  tf2_ros::TransformBroadcaster tf_broadcaster(node_);
+  while (future_obj_.wait_for(milliseconds(1)) == std::future_status::timeout)
   {
-    geometry_msgs::TransformStamped tfs;
-    tfs.header.stamp = ros::Time::now();
+    geometry_msgs::msg::TransformStamped tfs;
+    tfs.header.stamp = tf2_ros::toMsg(std::chrono::high_resolution_clock::now());
     tfs.header.frame_id = tf_reference_frame_;
     tfs.child_frame_id = tf_obj_frame_;
     tfs.transform.translation.x = pose_.position.x;
@@ -786,11 +778,13 @@ void TFNamedObjectsManager::TFPublisherThread::thread_function()
     tfs.transform.rotation.y = pose_.orientation.y;
     tfs.transform.rotation.z = pose_.orientation.z;
     tfs.transform.rotation.w = pose_.orientation.w;
+
     tf_broadcaster.sendTransform(tfs);
-    ros::spinOnce();
+//    ros::spinOnce();
+    rclcpp::spin_some(node_); //check
     std::this_thread::sleep_for(100ms);
   }
-  ROS_INFO("Exiting from the TF Pulisher of '%s'", tf_obj_frame_.c_str());
+  RCLCPP_INFO(node_->get_logger(),"Exiting from the TF Pulisher of '%s'", tf_obj_frame_.c_str());
   std::this_thread::sleep_for(500ms);
 }
 
