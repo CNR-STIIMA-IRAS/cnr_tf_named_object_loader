@@ -37,8 +37,7 @@ void add(const std::shared_ptr<moveit_msgs::srv::ApplyPlanningScene::Request> re
 int main(int argc, char** argv)
 {
   rclcpp::init(argc, argv);
-  node_  = rclcpp::Node::make_shared("cnr_tf_named_object_loader",
-                                     rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true));
+  node_  = rclcpp::Node::make_shared("cnr_tf_named_object_loader");
 
   tf_named_objects_.reset(new cnr_tf_named_object_loader::TFNamedObjectsManager(node_));
 
