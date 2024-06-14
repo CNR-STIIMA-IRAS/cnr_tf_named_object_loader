@@ -37,7 +37,7 @@ ament_target_dependencies(${PROJECT_NAME}_node PUBLIC rclcpp moveit_msgs moveit_
 ## Install ##
 #############
 
-#install the library
+# install the library
 install(TARGETS
         ${PROJECT_NAME}
         EXPORT ${PROJECT_NAME}Targets
@@ -47,11 +47,10 @@ install(TARGETS
         INCLUDES DESTINATION include #gives the information, actual install happens below
     )
 
-#install the executable
 install(TARGETS
     ${PROJECT_NAME}_node
-     DESTINATION bin
-)
+    DESTINATION lib/${PROJECT_NAME}
+    )
 
 #install the headers
 install(
@@ -61,7 +60,6 @@ install(
 #install other folders
 install(DIRECTORY test
     DESTINATION share/${PROJECT_NAME})
-
 
 ament_export_targets(${PROJECT_NAME}Targets HAS_LIBRARY_TARGET) # exports the targets for CMake, to allow your library’s clients to use the target_link_libraries(client my_library::my_library) syntax.
 ament_export_dependencies(rclcpp moveit_msgs moveit_ros_planning_interface tf2_ros Eigen3 yaml-cpp) # exports dependencies to downstream packages to avoid the the user to call find_package for those dependencies too.

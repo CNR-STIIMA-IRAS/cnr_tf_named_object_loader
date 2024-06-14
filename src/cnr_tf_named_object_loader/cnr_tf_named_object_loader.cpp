@@ -781,7 +781,7 @@ void TFNamedObjectsManager::TFPublisherThread::thread_function()
 
     tf_broadcaster.sendTransform(tfs);
 //    ros::spinOnce();
-    rclcpp::spin_some(node_); //check
+//    rclcpp::spin_some(node_); //is it needed?
     std::this_thread::sleep_for(100ms);
   }
   RCLCPP_INFO(node_->get_logger(),"Exiting from the TF Pulisher of '%s'", tf_obj_frame_.c_str());

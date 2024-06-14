@@ -14,8 +14,8 @@ void add(const std::shared_ptr<moveit_msgs::srv::ApplyPlanningScene::Request> re
   RCLCPP_INFO(node_->get_logger(),"=================================================================");
   std::string what;
   double timeout_s;
-  node_->declare_parameter("~/timeout", 10.0);
-  node_->get_parameter("~/timeout", timeout_s);
+  node_->declare_parameter("timeout", 10.0);
+  node_->get_parameter("timeout", timeout_s);
 
   cnr_tf_named_object_loader::tf_named_objects_t tf_named_objs;
   for(const auto & obj : req->scene.world.collision_objects)
