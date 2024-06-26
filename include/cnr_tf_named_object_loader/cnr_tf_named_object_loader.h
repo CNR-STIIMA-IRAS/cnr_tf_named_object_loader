@@ -81,7 +81,12 @@ public:
   bool addNamedTFObjects(const tf_named_objects_t& objs, double timeout_s, std::string& what);
   bool addNamedTFObjects(const tf_named_objects_t& objs, double timeout_s, const std::vector<std_msgs::ColorRGBA>& colors, std::string& what);
 
-  bool moveNamedTFObjects(const tf_named_objects_t& objs, double timeout_s, std::string& what);
+  bool  moveObjects(const std::map<std::string, geometry_msgs::Pose> &objs_poses_map,
+                    const std::map<std::string,std_msgs::ColorRGBA>& objs_colors_map,
+                    const double timeout_s, std::string& what);
+  bool moveNamedTFObjects(const std::map<std::string, geometry_msgs::Pose> &objs_poses_map,
+                          const std::map<std::string, std_msgs::ColorRGBA> &objs_colors_map,
+                          const double timeout_s, std::string& what);
   
   bool removeObjects(const std::vector<std::string>& ids, const double timeout_s, std::string& what);
   bool removeNamedObjects(const std::vector<std::string>& ids, const double timeout_s, std::string& what);
@@ -105,24 +110,27 @@ protected:
   {
     const std::string tf_obj_frame_;
     const std::string tf_reference_frame_;
-    const geometry_msgs::Pose pose_;
-    std::promise<void> exit_signal_;    
+    geometry_msgs::Pose pose_;
+    std::promise<void> exit_signal_;
     std::future<void> future_obj_;
     std::thread thread_;
+    std::mutex mtx_;
 
     void thread_function( );
 
-    public:
-      using Ptr = std::shared_ptr<TFPublisherThread>;
-      TFPublisherThread() = delete;
-      TFPublisherThread(const TFPublisherThread& ) = delete;
-      TFPublisherThread(TFPublisherThread&& ) = delete;
-      ~TFPublisherThread() = default;
-      explicit TFPublisherThread(const std::string& tf_obj_frame, const std::string& tf_reference_frame, const geometry_msgs::Pose& pose);
-      bool exit();
-      const std::string& tf_object_name() const;
-      const std::string& tf_reference_name() const;
-      const geometry_msgs::Pose& pose() const;
+  public:
+    using Ptr = std::shared_ptr<TFPublisherThread>;
+    TFPublisherThread() = delete;
+    TFPublisherThread(const TFPublisherThread& ) = delete;
+    TFPublisherThread(TFPublisherThread&& ) = delete;
+    ~TFPublisherThread() = default;
+    explicit TFPublisherThread(const std::string& tf_obj_frame, const std::string& tf_reference_frame, const geometry_msgs::Pose& pose);
+    bool exit();
+    const std::string& tf_object_name() const;
+    const std::string& tf_reference_name() const;
+    const geometry_msgs::Pose& pose() const;
+    void pose(const geometry_msgs::Pose &pose);
+
   };
 
   std::vector<TFPublisherThread::Ptr> tf_publishers_;
@@ -139,12 +147,12 @@ protected:
   bool check(const std::vector<std::string>& tf_names, const double& timeout_s, bool check_if_available, std::string& what);
 };
 
-  // moveit_msgs::CollisionObject toCollisionObject(const std::string& collisionObjID, const std::string& path_to_mesh,
-  //                                                const std::string& reference_frame, const geometry_msgs::Pose& pose,
-  //                                                const Eigen::Vector3d scale = Eigen::Vector3d(1, 1, 1));
+// moveit_msgs::CollisionObject toCollisionObject(const std::string& collisionObjID, const std::string& path_to_mesh,
+//                                                const std::string& reference_frame, const geometry_msgs::Pose& pose,
+//                                                const Eigen::Vector3d scale = Eigen::Vector3d(1, 1, 1));
 
-  moveit_msgs::CollisionObject toCollisionObject(const object_t& obj);
-  object_t toCollisionObject(const moveit_msgs::CollisionObject& obj);
-  
+moveit_msgs::CollisionObject toCollisionObject(const object_t& obj);
+object_t toCollisionObject(const moveit_msgs::CollisionObject& obj);
+
 }
 #endif  // AWARE_DEXTER_ROS_INTERFACE__SCENE_OBJECTS_MANAGER__H
