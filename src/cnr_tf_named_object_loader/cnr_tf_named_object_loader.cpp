@@ -308,6 +308,85 @@ TFNamedObjectsManager::TFNamedObjectsManager(const rclcpp::Node::SharedPtr& node
 //   return toCollisionObject(obj.id, obj.path_to_mesh(), obj.reference_frame(), obj.mesh_pose(), obj.scale());
 // }
 
+bool TFNamedObjectsManager::moveObjects(const std::map<std::string, geometry_msgs::msg::Pose>& objs_poses_map,
+                                        const std::map<std::string,std_msgs::msg::ColorRGBA>& objs_colors_map,
+                                        const double timeout_s, std::string& what)
+{
+  auto start_time = high_resolution_clock::now();
+
+  std::vector<std::string> ids;
+  ids.reserve(objs_poses_map.size());
+
+  for (const auto &o : objs_poses_map)
+    ids.push_back(o.first);
+
+  std::map<std::string, moveit_msgs::msg::CollisionObject> objs = planning_scene_interface_.getObjects(ids);
+  double _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
+
+  if(objs.empty())
+  {
+    what = what + "\nids don't match any object in the scene";
+    return false;
+  }
+
+  std::vector<std_msgs::msg::ColorRGBA> ccolors; ccolors.reserve(objs.size());
+  std::vector<moveit_msgs::msg::CollisionObject> cobjs; cobjs.reserve(objs.size());
+
+  for(auto& [id, cobj] : objs)
+  {
+    cobj.pose = objs_poses_map.at(id);
+    cobj.operation = moveit_msgs::msg::CollisionObject::MOVE;
+
+    cobj.meshes    .clear(); //remove the warnings
+    cobj.planes    .clear(); //remove the warnings
+    cobj.primitives.clear(); //remove the warnings
+
+    cobjs.push_back(cobj);
+    ccolors.push_back(objs_colors_map.at(id));
+  }
+  if (cobjs.size())
+  {
+    bool ret = applyAndCheck(cobjs, ccolors, _timeout_s, what);
+    return ret;
+  }
+  return true;
+}
+
+bool TFNamedObjectsManager::moveNamedTFObjects(const std::map<std::string, geometry_msgs::msg::Pose>& objs_poses_map,
+                                               const std::map<std::string,std_msgs::msg::ColorRGBA>& objs_colors_map,
+                                               const double timeout_s, std::string& what)
+{
+  if(!moveObjects(objs_poses_map, objs_colors_map, timeout_s, what))
+    return false;
+
+  std::vector<std::string> ids;
+  ids.reserve(objs_poses_map.size());
+
+  for (const auto &o : objs_poses_map)
+    ids.push_back(o.first);
+
+  std::vector<std::string> move_tf;
+  std::vector<TFPublisherThread::Ptr>::iterator it;
+  for(const std::string& id : ids)
+  {
+    it = std::find_if(tf_publishers_.begin(), tf_publishers_.end(),
+                      [&id](const TFPublisherThread::Ptr& tf_publisher) {return tf_publisher->tf_object_name() == id;});
+
+    if(it != tf_publishers_.end())
+    {
+      move_tf.push_back((*it)->tf_object_name());
+      (*it)->pose(objs_poses_map.at(id));
+    }
+  }
+
+//  if(not are_tf_available(move_tf, timeout_s, what))
+//  {
+//    what =
+//        "Timeout Expired. The TF " + to_string(move_tf) + " are not in the scene after " + std::to_string(timeout_s) + "sec.";
+//    return false;
+//  }
+  return true;
+}
 
 /**
  * @brief
@@ -678,7 +757,7 @@ bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::msg::Co
 {
   if (cov.size() == 0)
   {
-    what = "No objects to be added to the scene";
+    what = "No objects to be added to the scene or moved";
     return false;
   }
   std::vector<std::string> object_names;
@@ -760,6 +839,13 @@ const geometry_msgs::msg::Pose& TFNamedObjectsManager::TFPublisherThread::pose()
 {
   return pose_;
 }
+void TFNamedObjectsManager::TFPublisherThread::pose(const geometry_msgs::msg::Pose& pose)
+{
+  {
+    std::lock_guard<std::mutex> lock(mtx_);
+    pose_ = std::move(pose);
+  }
+}
 
 void TFNamedObjectsManager::TFPublisherThread::thread_function()
 {
@@ -768,17 +854,19 @@ void TFNamedObjectsManager::TFPublisherThread::thread_function()
   while (future_obj_.wait_for(milliseconds(1)) == std::future_status::timeout)
   {
     geometry_msgs::msg::TransformStamped tfs;
-    tfs.header.stamp = tf2_ros::toMsg(std::chrono::high_resolution_clock::now());
-    tfs.header.frame_id = tf_reference_frame_;
-    tfs.child_frame_id = tf_obj_frame_;
-    tfs.transform.translation.x = pose_.position.x;
-    tfs.transform.translation.y = pose_.position.y;
-    tfs.transform.translation.z = pose_.position.z;
-    tfs.transform.rotation.x = pose_.orientation.x;
-    tfs.transform.rotation.y = pose_.orientation.y;
-    tfs.transform.rotation.z = pose_.orientation.z;
-    tfs.transform.rotation.w = pose_.orientation.w;
-
+    {
+      std::lock_guard<std::mutex> lock(mtx_);
+      tfs.header.stamp = tf2_ros::toMsg(std::chrono::high_resolution_clock::now());
+      tfs.header.frame_id = tf_reference_frame_;
+      tfs.child_frame_id = tf_obj_frame_;
+      tfs.transform.translation.x = pose_.position.x;
+      tfs.transform.translation.y = pose_.position.y;
+      tfs.transform.translation.z = pose_.position.z;
+      tfs.transform.rotation.x = pose_.orientation.x;
+      tfs.transform.rotation.y = pose_.orientation.y;
+      tfs.transform.rotation.z = pose_.orientation.z;
+      tfs.transform.rotation.w = pose_.orientation.w;
+    }
     tf_broadcaster.sendTransform(tfs);
 //    ros::spinOnce();
 //    rclcpp::spin_some(node_); //is it needed?

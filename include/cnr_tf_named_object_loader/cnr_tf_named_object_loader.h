@@ -82,7 +82,12 @@ public:
   bool addNamedTFObjects(const tf_named_objects_t& objs, double timeout_s, std::string& what);
   bool addNamedTFObjects(const tf_named_objects_t& objs, double timeout_s, const std::vector<std_msgs::msg::ColorRGBA>& colors, std::string& what);
 
-  bool moveNamedTFObjects(const tf_named_objects_t& objs, double timeout_s, std::string& what);
+  bool  moveObjects(const std::map<std::string, geometry_msgs::msg::Pose> &objs_poses_map,
+                    const std::map<std::string,std_msgs::msg::ColorRGBA>& objs_colors_map,
+                    const double timeout_s, std::string& what);
+  bool moveNamedTFObjects(const std::map<std::string, geometry_msgs::msg::Pose> &objs_poses_map,
+                          const std::map<std::string, std_msgs::msg::ColorRGBA> &objs_colors_map,
+                          const double timeout_s, std::string& what);
   
   bool removeObjects(const std::vector<std::string>& ids, const double timeout_s, std::string& what);
   bool removeNamedObjects(const std::vector<std::string>& ids, const double timeout_s, std::string& what);
@@ -108,10 +113,11 @@ protected:
     rclcpp::Node::SharedPtr node_;
     const std::string tf_obj_frame_;
     const std::string tf_reference_frame_;
-    const geometry_msgs::msg::Pose pose_;
+    geometry_msgs::msg::Pose pose_;
     std::promise<void> exit_signal_;
     std::future<void> future_obj_;
     std::thread thread_;
+    std::mutex mtx_;
 
     void thread_function( );
 
@@ -127,6 +133,7 @@ protected:
     const std::string& tf_object_name() const;
     const std::string& tf_reference_name() const;
     const geometry_msgs::msg::Pose& pose() const;
+    void pose(const geometry_msgs::msg::Pose &pose);
   };
 
   std::vector<TFPublisherThread::Ptr> tf_publishers_;
