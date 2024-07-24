@@ -353,8 +353,17 @@ bool TFNamedObjectsManager::moveObjects(const std::map<std::string, geometry_msg
   }
   if (cobjs.size())
   {
-    bool ret = applyAndCheck(cobjs, ccolors, _timeout_s, what);
-    return ret;
+    std::vector<moveit_msgs::ObjectColor> moveit_color;
+    for (size_t i = 0; i < cobjs.size(); i++)
+    {
+      moveit_msgs::ObjectColor color;
+      color.id = cobjs.at(i).id;
+      color.color = ccolors.at(i);
+
+      moveit_color.push_back(color);
+    }
+
+    return planning_scene_interface_.applyCollisionObjects(cobjs,moveit_color);
   }
   return true;
 }
@@ -365,7 +374,6 @@ bool TFNamedObjectsManager::moveNamedTFObjects(const std::map<std::string, geome
 {
   if(!moveObjects(objs_poses_map, objs_colors_map, timeout_s, what))
     return false;
-
   std::vector<std::string> ids;
   ids.reserve(objs_poses_map.size());
 
@@ -386,12 +394,12 @@ bool TFNamedObjectsManager::moveNamedTFObjects(const std::map<std::string, geome
     }
   }
 
-//  if(not are_tf_available(move_tf, timeout_s, what))
-//  {
-//    what =
-//        "Timeout Expired. The TF " + to_string(move_tf) + " are not in the scene after " + std::to_string(timeout_s) + "sec.";
-//    return false;
-//  }
+  //  if(not are_tf_available(move_tf, timeout_s, what))
+  //  {
+  //    what =
+  //        "Timeout Expired. The TF " + to_string(move_tf) + " are not in the scene after " + std::to_string(timeout_s) + "sec.";
+  //    return false;
+  //  }
   return true;
 }
 
@@ -719,6 +727,7 @@ bool TFNamedObjectsManager::waitUntil(const std::vector<std::string>& object_nam
       if (check == ObjectState::ATTACHED or check == ObjectState::DETACHED)
       {
         auto const cobjs = planning_scene_interface_.getObjects(object_names);
+
         for (size_t i = 0; i < object_names.size(); i++)
         {
           const auto& object_name = object_names.at(i);
@@ -751,7 +760,8 @@ bool TFNamedObjectsManager::waitUntil(const std::vector<std::string>& object_nam
       return true;
     }
 
-    std::this_thread::sleep_for(25ms);
+    std::this_thread::sleep_for(1ms);
+
   }
 
   what = "Timeout Expired. The objects " + to_string(object_names) + " are not yet in the scene after " +
@@ -778,11 +788,17 @@ bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::Collisi
   cumulative_check =
       operations.size() == 1 ? true : std::equal(operations.begin() + 1, operations.end(), operations.begin());
 
+  std::vector<moveit_msgs::ObjectColor> moveit_color;
   for (size_t i = 0; i < cov.size(); i++)
   {
-    planning_scene_interface_.applyCollisionObject(cov.at(i), colors.at(i));
+    moveit_msgs::ObjectColor color;
+    color.id = cov.at(i).id;
+    color.color = colors.at(i);
+
+    moveit_color.push_back(color);
     object_names.push_back(cov.at(i).id);
   }
+  planning_scene_interface_.applyCollisionObjects(cov,moveit_color);
 
   bool ret = true;
   for (size_t i = 0; i < operations.size(); i++)
@@ -798,6 +814,7 @@ bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::Collisi
         cumulative_check ? object_names : std::vector<std::string>{ object_names.at(i) };
 
     ret = waitUntil(_object_names, st, timeout_s, what);
+
     if (!ret)
     {
       return false;

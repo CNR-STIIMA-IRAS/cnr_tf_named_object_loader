@@ -7,6 +7,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED On)
 set(CMAKE_CXX_EXTENSIONS Off)
 
+set(CMAKE_BUILD_TYPE Release)
+
 ### 
 find_package(yaml-cpp REQUIRED)
 find_package(Eigen3 REQUIRED COMPONENTS Core)
