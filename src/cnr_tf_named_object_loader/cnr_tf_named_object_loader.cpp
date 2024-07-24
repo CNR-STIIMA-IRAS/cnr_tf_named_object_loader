@@ -18,6 +18,7 @@
 #include <moveit_msgs/CollisionObject.h>
 #include <moveit_msgs/ApplyPlanningScene.h>
 #include <geometry_msgs/TransformStamped.h>
+#include <moveit/move_group/capability_names.h>
 
 #include <shape_msgs/Mesh.h>
 #include <geometric_shapes/shape_operations.h>
@@ -277,6 +278,23 @@ object_t toCollisionObject(const moveit_msgs::CollisionObject& obj)
 
 TFNamedObjectsManager::TFNamedObjectsManager()  // : tfBuffer_(ros::Duration(2.0))
 {
+  node_handle_ = ros::NodeHandle();
+  planning_scene_diff_publisher_ = node_handle_.advertise<moveit_msgs::PlanningScene>("planning_scene", 1);
+
+  ros::service::waitForService(move_group::GET_PLANNING_SCENE_SERVICE_NAME);
+  ros::service::waitForService(move_group::APPLY_PLANNING_SCENE_SERVICE_NAME);
+
+  planning_scene_service_ =
+      node_handle_.serviceClient<moveit_msgs::GetPlanningScene>(move_group::GET_PLANNING_SCENE_SERVICE_NAME,true); //persistent connections
+  apply_planning_scene_service_ =
+      node_handle_.serviceClient<moveit_msgs::ApplyPlanningScene>(move_group::APPLY_PLANNING_SCENE_SERVICE_NAME,true); //persistent connections
+
+
+  if(not planning_scene_service_.waitForExistence(ros::Duration(10.0)))
+    throw std::runtime_error("planning scene service not available");
+  if(not apply_planning_scene_service_.waitForExistence(ros::Duration(10.0)))
+    throw std::runtime_error("apply planning scene service not available");
+
   tfListener_.reset(new tf2_ros::TransformListener(tfBuffer_));
   ros::Duration(tfBuffer_.getCacheLength().toSec()/100.0).sleep();
 };
@@ -317,6 +335,97 @@ TFNamedObjectsManager::TFNamedObjectsManager()  // : tfBuffer_(ros::Duration(2.0
 //   return toCollisionObject(obj.id, obj.path_to_mesh(), obj.reference_frame(), obj.mesh_pose(), obj.scale());
 // }
 
+std::map<std::string, moveit_msgs::CollisionObject> TFNamedObjectsManager::getObjects(const std::vector<std::string>& object_ids)
+{
+  moveit_msgs::GetPlanningScene::Request request;
+  moveit_msgs::GetPlanningScene::Response response;
+  std::map<std::string, moveit_msgs::CollisionObject> result;
+  request.components.components = request.components.WORLD_OBJECT_GEOMETRY;
+  if (!planning_scene_service_.call(request, response))
+  {
+    ROS_WARN("Could not call planning scene service to get object geometries");
+    return result;
+  }
+
+  for (const moveit_msgs::CollisionObject& collision_object : response.scene.world.collision_objects)
+  {
+    if (object_ids.empty() || std::find(object_ids.begin(), object_ids.end(), collision_object.id) != object_ids.end())
+    {
+      result[collision_object.id] = collision_object;
+    }
+  }
+  return result;
+}
+
+std::vector<std::string> TFNamedObjectsManager::getKnownObjectNames(bool with_type)
+{
+  moveit_msgs::GetPlanningScene::Request request;
+  moveit_msgs::GetPlanningScene::Response response;
+  std::vector<std::string> result;
+  request.components.components = request.components.WORLD_OBJECT_NAMES;
+  if (!planning_scene_service_.call(request, response))
+    return result;
+  if (with_type)
+  {
+    for (const moveit_msgs::CollisionObject& collision_object : response.scene.world.collision_objects)
+      if (!collision_object.type.key.empty())
+        result.push_back(collision_object.id);
+  }
+  else
+  {
+    for (const moveit_msgs::CollisionObject& collision_object : response.scene.world.collision_objects)
+      result.push_back(collision_object.id);
+  }
+  return result;
+}
+
+bool TFNamedObjectsManager::applyPlanningScene(const moveit_msgs::PlanningScene& planning_scene)
+{
+  moveit_msgs::ApplyPlanningScene::Request request;
+  moveit_msgs::ApplyPlanningScene::Response response;
+  request.scene = planning_scene;
+  if (!apply_planning_scene_service_.call(request, response))
+  {
+    ROS_WARN("Failed to call ApplyPlanningScene service");
+    return false;
+  }
+  return response.success;
+}
+
+bool TFNamedObjectsManager::applyCollisionObjects(const std::vector<moveit_msgs::CollisionObject>& collision_objects,
+                                                   const std::vector<moveit_msgs::ObjectColor>& object_colors)
+{
+  moveit_msgs::PlanningScene ps;
+  ps.robot_state.is_diff = true;
+  ps.is_diff = true;
+  ps.world.collision_objects = collision_objects;
+  ps.object_colors = object_colors;
+
+  for (size_t i = 0; i < ps.object_colors.size(); ++i)
+  {
+    if (ps.object_colors[i].id.empty() && i < collision_objects.size())
+      ps.object_colors[i].id = collision_objects[i].id;
+    else
+      break;
+  }
+
+  return applyPlanningScene(ps);
+}
+
+void TFNamedObjectsManager::removeCollisionObjects(const std::vector<std::string>& object_ids) const
+{
+  moveit_msgs::PlanningScene planning_scene;
+  moveit_msgs::CollisionObject object;
+  for (const std::string& object_id : object_ids)
+  {
+    object.id = object_id;
+    object.operation = object.REMOVE;
+    planning_scene.world.collision_objects.push_back(object);
+  }
+  planning_scene.is_diff = true;
+  planning_scene_diff_publisher_.publish(planning_scene);
+}
+
 bool TFNamedObjectsManager::moveObjects(const std::map<std::string, geometry_msgs::Pose>& objs_poses_map, const std::map<std::string,std_msgs::ColorRGBA>& objs_colors_map, const double timeout_s, std::string& what)
 {
   auto start_time = high_resolution_clock::now();
@@ -327,7 +436,7 @@ bool TFNamedObjectsManager::moveObjects(const std::map<std::string, geometry_msg
   for (const auto &o : objs_poses_map)
     ids.push_back(o.first);
 
-  std::map<std::string, moveit_msgs::CollisionObject> objs = planning_scene_interface_.getObjects(ids);
+  std::map<std::string, moveit_msgs::CollisionObject> objs = getObjects(ids);
   double _timeout_s = timeout_s - duration_cast<seconds>(high_resolution_clock::now() - start_time).count();
 
   if(objs.empty())
@@ -363,7 +472,7 @@ bool TFNamedObjectsManager::moveObjects(const std::map<std::string, geometry_msg
       moveit_color.push_back(color);
     }
 
-    return planning_scene_interface_.applyCollisionObjects(cobjs,moveit_color);
+    return applyCollisionObjects(cobjs,moveit_color);
   }
   return true;
 }
@@ -660,7 +769,7 @@ bool TFNamedObjectsManager::are_tf_unavailable(const std::vector<std::string>& t
 bool TFNamedObjectsManager::removeObjects(const std::vector<std::string>& ids, const double timeout_s,
                                           std::string& what)
 {
-  std::vector<std::string> vv = planning_scene_interface_.getKnownObjectNames();
+  std::vector<std::string> vv = getKnownObjectNames();
   std::vector<std::string> _ids;
   for (const auto& v : vv)
   {
@@ -669,7 +778,7 @@ bool TFNamedObjectsManager::removeObjects(const std::vector<std::string>& ids, c
       _ids.push_back(v);
     }
   }
-  planning_scene_interface_.removeCollisionObjects(_ids);
+  removeCollisionObjects(_ids);
 
   return waitUntil(ids, { TFNamedObjectsManager::ObjectState::DETACHED, TFNamedObjectsManager::ObjectState::UNKNOWN },
                    timeout_s, what);
@@ -709,7 +818,7 @@ bool TFNamedObjectsManager::removeNamedObjects(const std::vector<std::string>& i
 
 bool TFNamedObjectsManager::resetScene(const double timeout_s, std::string& what)
 {
-  std::vector<std::string> vv = planning_scene_interface_.getKnownObjectNames();
+  std::vector<std::string> vv = getKnownObjectNames();
   return removeNamedObjects(vv, timeout_s, what);
 }
 
@@ -726,7 +835,7 @@ bool TFNamedObjectsManager::waitUntil(const std::vector<std::string>& object_nam
     {
       if (check == ObjectState::ATTACHED or check == ObjectState::DETACHED)
       {
-        auto const cobjs = planning_scene_interface_.getObjects(object_names);
+        auto const cobjs = getObjects(object_names);
 
         for (size_t i = 0; i < object_names.size(); i++)
         {
@@ -741,7 +850,7 @@ bool TFNamedObjectsManager::waitUntil(const std::vector<std::string>& object_nam
       }
       else if (check == ObjectState::KNOWN or check == ObjectState::UNKNOWN)
       {
-        auto const obj_names = planning_scene_interface_.getKnownObjectNames();
+        auto const obj_names = getKnownObjectNames();
         for (size_t i = 0; i < object_names.size(); i++)
         {
           const auto& object_name = object_names.at(i);
@@ -798,7 +907,7 @@ bool TFNamedObjectsManager::applyAndCheck(const std::vector<moveit_msgs::Collisi
     moveit_color.push_back(color);
     object_names.push_back(cov.at(i).id);
   }
-  planning_scene_interface_.applyCollisionObjects(cov,moveit_color);
+  applyCollisionObjects(cov,moveit_color);
 
   bool ret = true;
   for (size_t i = 0; i < operations.size(); i++)

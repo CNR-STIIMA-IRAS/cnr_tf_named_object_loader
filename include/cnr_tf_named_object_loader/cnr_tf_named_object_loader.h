@@ -13,6 +13,7 @@
 #include <std_msgs/ColorRGBA.h>
 #include <geometry_msgs/Pose.h>
 
+#include <moveit_msgs/GetPlanningScene.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 
 #include <tf2_ros/transform_listener.h>
@@ -104,7 +105,25 @@ protected:
     DETACHED
   };
 
-  moveit::planning_interface::PlanningSceneInterface planning_scene_interface_;
+  /*
+   * The `moveit::planning_interface::PlanningSceneInterface` has been removed because it does not estabilish persistent connections with
+   * the `get_planning_scene` and `apply_planning_scene` services. This lack of persistent connections causes significant latency in service calls,
+   * resulting in a substantial slowdown of all operations. To address this issue, the core functions of the `planning_scene_interface` have been re-implemented here,
+   * utilizing persistent connections between clients and servers. This enhancement provides a 50-100x speedup in performance.
+  */
+//  moveit::planning_interface::PlanningSceneInterface planning_scene_interface_;
+  ros::NodeHandle node_handle_;
+  ros::ServiceClient planning_scene_service_;
+  ros::ServiceClient apply_planning_scene_service_;
+  ros::Publisher planning_scene_diff_publisher_;
+
+  std::vector<std::string> getKnownObjectNames(bool with_type = false);
+  std::map<std::string, moveit_msgs::CollisionObject> getObjects(const std::vector<std::string>& object_ids);
+  bool applyCollisionObjects(const std::vector<moveit_msgs::CollisionObject>& collision_objects,
+                                                     const std::vector<moveit_msgs::ObjectColor>& object_colors);
+  bool applyPlanningScene(const moveit_msgs::PlanningScene& planning_scene);
+  void removeCollisionObjects(const std::vector<std::string>& object_ids) const;
+
 
   class TFPublisherThread
   {
