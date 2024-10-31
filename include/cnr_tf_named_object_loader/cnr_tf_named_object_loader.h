@@ -104,8 +104,7 @@ protected:
     DETACHED
   };
 
-  moveit::planning_interface::PlanningSceneInterface planning_scene_interface_;
-
+  moveit::planning_interface::PlanningSceneInterfacePtr planning_scene_interface_;
   class TFPublisherThread
   {
     const std::string tf_obj_frame_;
