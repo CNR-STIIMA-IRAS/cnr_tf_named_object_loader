@@ -27,11 +27,11 @@ target_include_directories(${PROJECT_NAME}
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
-ament_target_dependencies(${PROJECT_NAME} PUBLIC rclcpp moveit_msgs moveit_ros_planning_interface tf2_ros Eigen3)
+target_link_libraries(${PROJECT_NAME} PUBLIC ${rclcpp_TARGETS} ${moveit_msgs_TARGETS} ${moveit_ros_planning_interface_TARGETS} ${tf2_ros_TARGETS} Eigen3::Eigen)
 
 add_executable(${PROJECT_NAME}_node src/cnr_tf_named_object_loader_node.cpp)
 target_link_libraries(${PROJECT_NAME}_node PUBLIC ${PROJECT_NAME} yaml-cpp)
-ament_target_dependencies(${PROJECT_NAME}_node PUBLIC rclcpp moveit_msgs moveit_ros_planning_interface tf2_ros Eigen3)
+target_link_libraries(${PROJECT_NAME}_node PUBLIC ${rclcpp_TARGETS} ${moveit_msgs_TARGETS} ${moveit_ros_planning_interface_TARGETS} ${tf2_ros_TARGETS} Eigen3::Eigen)
 
 #############
 ## Install ##
